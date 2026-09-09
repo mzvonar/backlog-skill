@@ -286,3 +286,68 @@ describe("migrate.py — frontmatter is YAML, not Python", () => {
     }
   });
 });
+
+// A `### ` heading can be a RECORD, not a grouping: the heading names the item and the bullets are
+// its FIELDS. Reading each field as an item split four records into eight on the real corpus — a
+// degenerate summary apiece (`What`, `Trigger`), no trigger on any of them because the trigger was
+// a sibling "item", and `open` on two records whose heading said DONE and KILLED.
+const RECORDS = `# Deferred work
+
+## A section
+
+### A record whose heading names it — **KILLED (2026-08-04, grooming)**
+
+- **What:** the thing that was parked.
+- **Trigger:** the story that would have unparked it.
+
+### A grouping heading, whose bullets are ordinary items
+
+- **A real item.** It stands alone.
+- **A second real item.** So does this one.
+`;
+
+describe("migrate.py — a sub-heading record", () => {
+  it("folds an all-field run into one item named by its heading", () => {
+    const { dir, files, status, stdout } = migrate(RECORDS);
+    try {
+      assert.match(stdout, /`### ` records folded from their field bullets: 1/u);
+      // One record + two ordinary items = three, not four.
+      assert.equal(files.length, 3, `got ${JSON.stringify(files)}`);
+      assert.ok(files.some((f) => f.includes("a-record-whose-heading-names-it")),
+        `the record is not named by its heading: ${JSON.stringify(files)}`);
+      assert.ok(!files.some((f) => /dw-\d+-what\.md/u.test(f)),
+        `a field bullet became an item: ${JSON.stringify(files)}`);
+      assert.ok(status.includes("KILLED (2026-08-04)"), `the heading's status was not applied: ${JSON.stringify(status)}`);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("takes the record's trigger from its own Trigger field", () => {
+    // Before folding, the trigger was a SIBLING item, so the record had none and was reported
+    // untriaged — asking for a trigger that was sitting one bullet away.
+    const { dir, detailDir } = (() => {
+      const r = migrate(RECORDS);
+      return { ...r, detailDir: path.join(r.dir, "out", "deferred-work") };
+    })();
+    try {
+      const rec = readdirSync(detailDir).find((n) => n.includes("a-record-whose-heading"));
+      const text = readFileSync(path.join(detailDir, rec), "utf-8");
+      assert.match(text, /trigger: 'the story that would have unparked it\.'/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("does NOT fold a grouping heading whose bullets are ordinary items", () => {
+    // The guard. `### ` is a grouping heading in plenty of ledgers; folding those would merge
+    // unrelated items into one and lose every summary but the heading's.
+    const { dir, files } = migrate(RECORDS);
+    try {
+      assert.ok(files.some((f) => f.includes("a-real-item")), `got ${JSON.stringify(files)}`);
+      assert.ok(files.some((f) => f.includes("a-second-real-item")), `got ${JSON.stringify(files)}`);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});

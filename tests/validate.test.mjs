@@ -84,6 +84,22 @@ describe("scanBacklog", () => {
     // was first adopted: a code-review deferral could land in the index with NOTHING reporting it,
     // not this and not the reader. Which shape a repo gets is a fact about its
     // `_bmad/_config/manifest.yaml`, never about which version is newest.
+    // A file name appearing in PROSE is not a pointer. `indexText.includes(name)` accepted one, so
+    // an unreferenced detail file read as indexed — invisible to the classifier and reported clean.
+    ["a detail file mentioned only in prose, never pointed at", (d) => {
+      writeFileSync(path.join(d, "deferred-work", "dw-003-orphan.md"),
+        "---\nid: dw-003\nsummary: 'Orphan.'\ntrigger: 'someday'\nstatus: open\n---\n- **Orphan.**\n");
+      writeFileSync(path.join(d, "deferred-work.md"),
+        INDEX + "\nSee also `deferred-work/dw-003-orphan.md`, which nothing points at.\n");
+    }, ["UNINDEXED"]],
+    // Two entries pointing at one file. The expected set is DUPLICATE_POINTER *alone*, and that is
+    // the whole finding: three entries and three pointers stay balanced, so the count-based
+    // UNPROMOTED_APPENDS check sees nothing while one entry has no detail file of its own. Written
+    // expecting both, corrected by running it — the count is exactly what cannot notice this.
+    ["two index entries pointing at the same detail file", (d) =>
+      writeFileSync(path.join(d, "deferred-work.md"),
+        `${INDEX}- id: dw-777\n  summary: a duplicate pointer\n  detail: \`deferred-work/dw-001-a.md\`\n`),
+      ["DUPLICATE_POINTER"]],
     ["a bare-bullet generator append, the older shape with no key", (d) =>
       writeFileSync(path.join(d, "deferred-work.md"),
         INDEX + "- Guard the corrupt-enum read path — pre-existing, deferred.\n"),

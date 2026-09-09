@@ -1,6 +1,6 @@
 # Migration traps
 
-Nine defects that were live in this migrator, found against a real 3,622-line corpus. Each is a
+Ten defects that were live in this migrator, found against a real 3,622-line corpus. Each is a
 silent corruption: the migration completes, the counts look plausible, and content is misfiled or
 simply absent.
 
@@ -140,8 +140,8 @@ absent from a migration billed as lossless, with the item count unchanged and no
 Walk **sections**, not items. Then a section with no items still reaches the index and gets
 reported for promotion by hand.
 
-> Both of these were found by asking a question the item counts cannot answer: *does every byte of
-> the source appear somewhere in the output?* The item-level answer was a clean 251/251 while 23
+> Both of these were found by asking a question the item counts cannot answer: *did all of the
+> source's content reach the output?* The item-level answer was a clean 251/251 while 23
 > section intros and one whole item were on the floor. **A losslessness check whose unit is the
 > thing the tool already understands cannot see what the tool does not model.**
 
@@ -203,6 +203,39 @@ with that format's rules, and validate with that format's parser rather than the
 
 ---
 
+## 10. A `### ` heading can be the ITEM, and its bullets its FIELDS
+
+The walk reads top-level bullets as items. A hand-written ledger also carries records shaped as a
+heading plus labelled fields:
+
+```markdown
+### TanStack Table integration traps for the person-search screen — **KILLED (2026-08-04)**
+
+- **What:** three traps the 2-4a implementation hit …
+- **Trigger:** story 2-8 scoping — fold into its Dev Notes verbatim.
+```
+
+Read bullet-by-bullet that is **two items**, and on the real corpus four such records became eight.
+Every consequence is bad in a different way:
+
+- the summaries were `What` and `Trigger`, which name nothing;
+- neither half carried a trigger, because the trigger was its *sibling* — so both were reported
+  **untriaged**, asking for a trigger that was sitting one bullet away;
+- the heading's own status was never read, so two records whose headings said `DONE` and `KILLED`
+  shipped as `open` — the same harm as trap 8, by a different route.
+
+Fold a `### ` run into one item **only when every bullet under it is a short bold label ending in a
+colon**, and take the summary and the status from the heading. The guard matters: `### ` is an
+ordinary grouping heading in plenty of ledgers, and folding those would merge unrelated items and
+lose every summary but the heading's. Report the count of folded records so the choice is visible.
+
+Note where this sits relative to trap 7: that was a heading with **no** bullets, this is a heading
+whose bullets are not items. They are the same mistake — *the item is not always the bullet* — and
+fixing the first did not reveal the second, because a heading with two bullets under it looks
+exactly like a section that is working.
+
+---
+
 ## The general rule
 
 Traps 1–5 are the same mistake at different scales: **anchoring on the layout the author imagined
@@ -219,6 +252,10 @@ Two corollaries, both bought the expensive way:
 - **Verify in the source's units, not the tool's.** Traps 6 and 7 are a different failure: not
   misread items but content the model has no slot for. Only a byte-level "is all of this somewhere
   in the output?" sweep finds those, and it must run before the migration is committed.
+- **The item is not always the bullet.** Traps 7 and 10 are the same error at two extremes: a
+  record with no bullets, and a record whose bullets are its fields. Whenever a walk assumes one
+  syntactic form *is* the unit, ask what the ledger's other record shapes look like — the answer is
+  in the file, and grepping its `### ` headings takes a second.
 - **A vocabulary is data, and it is the one thing a differential check cannot test.** Trap 8 passed
   a green gate because both implementations shared the missing words. Where two checks must agree,
   ask what they agree *about*, and report the inputs neither of them claims.

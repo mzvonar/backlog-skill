@@ -34,6 +34,16 @@ HEDGE = re.compile(r'(HALF|NOT|MOSTLY|PARTLY|PARTIALLY|NEARLY)\s*$', re.I)
 # neither reaches a detail file, and dropping them is silent.
 SECTION_MARK = re.compile(r'\*\*\s*(?:[^\w\s]\s*)?(' + CLOSED_WORDS + r')\b')
 
+# A `### ` heading can be a RECORD, not a grouping: the heading names the item and the bullets under
+# it are its FIELDS. On the first real corpus all five were this shape, and reading each field as a
+# separate item split four records into eight — with a degenerate summary apiece (`What`, `Trigger`)
+# and, for the two under a marked heading, `open` on work the heading said was KILLED.
+#
+# Guarded, because `### ` is a grouping heading in plenty of ledgers: the run is folded ONLY when
+# every bullet under the heading is a short bold label ending in a colon. A single ordinary bullet
+# in the run means the heading is a grouping and its bullets stay items. Grouping is reported.
+FIELD_BULLET = re.compile(r'^- \*\*[A-Z][A-Za-z /]{0,24}:\*\*')
+
 
 def yaml_single(s):
     r"""A YAML single-quoted scalar. The ONLY escape is a doubled quote; backslashes are literal.
@@ -46,6 +56,7 @@ def yaml_single(s):
     return "'" + " ".join(str(s).split()).replace("'", "''") + "'"
 
 items, no_trigger, closed_n, ambiguous, sections, section_open = [], 0, 0, [], [], []
+records = 0
 for a, b in zip(secs, secs[1:] + [len(lines)]):
     head = lines[a][3:].strip()
     body = lines[a+1:b]
@@ -53,8 +64,30 @@ for a, b in zip(secs, secs[1:] + [len(lines)]):
     intro = "\n".join(body[:idx[0]] if idx else body).strip()
     sections.append(dict(head=head, intro=intro, has_items=bool(idx)))
     sm = SECTION_MARK.search(head)
+
+    # Fold each all-field `### ` run into ONE unit: (start, end, record_heading_or_None).
+    subs = [i for i, l in enumerate(body) if l.startswith("### ")]
+    folded = {}
+    for si in subs:
+        end = next((k for k in subs if k > si), len(body))
+        run = [k for k in range(si + 1, end) if re.match(r'^- ', body[k])]
+        if run and all(FIELD_BULLET.match(body[k]) for k in run):
+            folded[run[0]] = (si, end, body[si][4:].strip())
+            for k in run[1:]:
+                folded[k] = None                       # absorbed into the record above
+            records += 1
+
+    units = []
     for j, s in enumerate(idx):
-        e = idx[j+1] if j+1 < len(idx) else len(body)
+        if s in folded:
+            if folded[s] is None:
+                continue                               # a field of a record already emitted
+            si, end, rec_head = folded[s]
+            units.append((si, end, rec_head))
+            continue
+        units.append((s, idx[j+1] if j+1 < len(idx) else len(body), None))
+
+    for s, e, rec_head in units:
         block = "\n".join(body[s:e]).rstrip()
         if not block.strip():
             continue
@@ -84,6 +117,8 @@ for a, b in zip(secs, secs[1:] + [len(lines)]):
         head_zone = " ".join(" ".join(own).split())
         # The closing paren stays OPTIONAL: it can fall outside the zone when the parenthetical runs
         # past the item's own text. Take the date and stop.
+        if rec_head:
+            head_zone = rec_head                       # the heading is the record's own text
         zone = re.sub(r'`[^`]*`', ' ', head_zone)   # prose that QUOTES the convention is not a status
         m = re.search(r'\*\*[^*]{0,4}(' + CLOSED_WORDS + r')[^(*]{0,12}\((?P<d>[^)\n]*)\)?', zone)
         if m and (re.search(r'Y{4}|MM-DD', m.group('d')) or HEDGE.search(zone[:m.start(1)])):
@@ -114,8 +149,13 @@ for a, b in zip(secs, secs[1:] + [len(lines)]):
         trigger = " ".join(tm.group(1).split())[:200] if tm else ""
         if not trigger and status == "open":
             no_trigger += 1
-        hm = re.match(r'^- \*\*(.+?)\*\*', block, re.S) or re.match(r'^- (.+?)[.\n]', block, re.S)
-        summary = " ".join((hm.group(1) if hm else block[2:60]).split())[:180]
+        if rec_head:
+            # The heading names the record; its fields do not. Strip a trailing status marker so the
+            # summary says what the item IS — `What` and `Trigger` as summaries name nothing.
+            summary = " ".join(re.sub(r'\s*[—-]*\s*\*\*[^*]*\*\*\s*$', '', rec_head).split())[:180]
+        else:
+            hm = re.match(r'^- \*\*(.+?)\*\*', block, re.S) or re.match(r'^- (.+?)[.\n]', block, re.S)
+            summary = " ".join((hm.group(1) if hm else block[2:60]).split())[:180]
         if sm and status == "open":
             # Reported, never applied: a retired SECTION usually means its items are done, but a
             # DONE section can still hold one live item and only a person can tell. The one this
@@ -167,6 +207,8 @@ if bulletless:
     print(f"  sections with NO bullet items: {len(bulletless)}  <- content kept in the index, promote by hand")
     for h in bulletless:
         print(f"      {h[:78]}")
+if records:
+    print(f"  `### ` records folded from their field bullets: {records}")
 print(f"  status inferred/ambiguous: {len(ambiguous)}")
 if section_open:
     print(f"  open items under a RETIRED/DONE section heading: {len(section_open)}  <- resolve by hand")

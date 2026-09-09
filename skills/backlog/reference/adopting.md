@@ -45,13 +45,13 @@ It prints counts rather than deciding. Each line is a task.
 
 ### `open with NO trigger: N`
 
-Expected, and large on first adoption — **101 of 200** on the real corpus. The monolith hid them;
+Expected, and large on first adoption — **97 of 194** on the real corpus. The monolith hid them;
 the `deferred-work` policy surfaces them because an item with no trigger cannot be classified into
 any bucket. It is not "keep-deferred", it is **untriaged**.
 
 **Do not invent triggers to clear the number.** A guessed trigger is worse than a missing one: it
 reads as a decision someone made. Give them triggers incrementally, a few per grooming pass, when
-the surrounding work makes the real trigger obvious. Adoption is not the moment to triage 101 items.
+the surrounding work makes the real trigger obvious. Adoption is not the moment to triage 97 items.
 
 ### `sections with NO bullet items: N`
 
@@ -103,7 +103,7 @@ an owner, or a link would have been.
 
 **Some index summaries read as a status marker.** `summary` is derived from the item's first bold
 span, so an item whose marker is written at the head of the bullet — `- **DONE (2026-08-04)** —
-decided at the retro…` — yields `summary: DONE (2026-08-04)`, which names nothing. **43 of 251** on
+decided at the retro…` — yields `summary: DONE (2026-08-04)`, which names nothing. **43 of 247** on
 the real corpus, all of them closed items, so they are rows you meet only when reading the index
 directly or passing `--all`. Fixing it means skipping a leading marker and falling back to the
 first sentence, and for some items no title survives outside a `~~strikethrough~~` further down.

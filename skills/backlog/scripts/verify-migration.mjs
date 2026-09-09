@@ -8,10 +8,14 @@
 // `migrate.py` reports what it could not derive. This answers the different question — what it did
 // not SEE — and every trap in reference/migration-traps.md was found by one of these two checks:
 //
-//   COVERAGE  does every byte of the source appear somewhere in the output?
-//             Traps 6 and 7 were invisible to every count: item bodies read a clean 251/251 while
-//             23 section intros and one whole item were on the floor. A check whose unit is the
-//             thing the tool already models cannot see what the tool does not model.
+//   COVERAGE  does every non-blank source LINE, trimmed, appear somewhere in the output?
+//             Line-level and trimmed, not byte-level: re-indentation is not loss, and the question
+//             is whether the CONTENT survived. It will not catch a line that moved into a
+//             different item, or one whose leading whitespace changed meaning. Item BODIES are
+//             checked verbatim and whole, which is the exact half. Traps 6 and 7 were invisible to
+//             every count: bodies read a clean 251/251 while 23 section intros and one whole item
+//             were on the floor. A check whose unit is the thing the tool already models cannot
+//             see what the tool does not model.
 //
 //   STATUS    does a SECOND extractor, written differently, agree on WHICH items are closed?
 //             Traps 4 and 5. The counts were 44 against 40 and the near-match read as agreement

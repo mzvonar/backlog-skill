@@ -16,7 +16,7 @@ A backlog that lives in the repository, in markdown, and stays workable past a f
 ## The problem
 
 A single append-only list works until it doesn't. Measured on a real one before adoption:
-**3,622 lines, 251 items, 85 sections.** Every pass over it read the whole file to answer one
+**3,622 lines, 247 items, 85 sections.** Every pass over it read the whole file to answer one
 question about a handful of items, and every concurrent branch collided on the same trailing lines.
 
 ## The shape
@@ -58,7 +58,7 @@ node scripts/backlog.mjs <dir>/deferred-work --all    # include DONE / KILLED
 node scripts/backlog.mjs <dir>/deferred-work --json   # for tooling
 ```
 
-Frontmatter only — bodies are never read. On the real corpus above that is **402 lines against
+Frontmatter only — bodies are never read. On the real corpus above that is **390 lines against
 3,622**, with closed items filtered rather than skimmed past. Open an item's detail file once you
 have selected it.
 
@@ -99,7 +99,7 @@ Two rules that matter more than the buckets:
   Verify against the code before promoting — an item can be silently already-done.
 - **An open item with no `trigger` cannot be classified.** It is not "keep-deferred", it is
   **untriaged**, and the fix is to give it a trigger. Expect many on first adoption: the real corpus
-  above had **101 of 200** open items without one, which the monolith hid and this surfaces.
+  above had **97 of 194** open items without one, which the monolith hid and this surfaces.
 
 ## Coexisting with generators
 
@@ -145,13 +145,15 @@ not state is emitted empty and counted, so gaps are visible rather than guessed.
 it refuses to decide: untriaged items, sections with no bullets, and open items under a retired
 heading. Each of those lines is a task, not a statistic.
 
-`verify-migration.mjs` asks the two questions the counts cannot. **Does every byte of the source
-appear somewhere in the output?** — item bodies read a clean 251/251 on the real corpus while 23
-section intros and one whole item were on the floor. **Does a second extractor agree on WHICH items
+`verify-migration.mjs` asks the two questions the counts cannot. **Did all of the source's content
+reach the output?** — every item body verbatim and whole, and every other non-blank line by a
+trimmed match, which is content-level rather than byte-level: re-indentation is not loss. On the
+real corpus the bodies read a clean 251/251 while 23 section intros and one whole item were on the
+floor. **Does a second extractor agree on WHICH items
 are closed?** — the two disagreed 44 against 40, and diffing them as *sets* rather than sizes is
 what turned a plausible near-match into four named items.
 
 Both of those fired on the first real adoption. **`reference/adopting.md` is the runbook** — the
 order, what to do with each reported count, and the two decisions to make explicitly.
-`reference/migration-traps.md` is why: nine silent corruptions, each live against a real ledger —
+`reference/migration-traps.md` is why: ten silent corruptions, each live against a real ledger —
 including one the gate itself could not see, because both extractors were missing the same word.

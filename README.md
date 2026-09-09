@@ -6,10 +6,10 @@ Packaged as a Claude Code skill.
 ## Why
 
 A single append-only list works until it doesn't. Measured on a real one before adoption:
-**3,622 lines, 251 items, 85 sections.** Every pass over it read the whole file to answer one
+**3,622 lines, 247 items, 85 sections.** Every pass over it read the whole file to answer one
 question about a handful of items, and every concurrent branch collided on the same trailing lines.
 
-After: **402 lines read instead of 3,622**, closed items filtered rather than skimmed past, and the
+After: **390 lines read instead of 3,622**, closed items filtered rather than skimmed past, and the
 full record for an item one file away.
 
 ## Shape
@@ -54,15 +54,15 @@ and counted, so the gaps are visible.
 For items — the qualifier is the lesson. A ledger also holds section headings, intro prose and the
 occasional item written with no bullet at all, none of which an item-driven walk counts, and all of
 which it once dropped while reporting a clean 251 of 251. That is what `verify-migration.mjs` is
-for: it asks whether every byte of the source reached the output, and whether a second extractor
-agrees on which items are closed.
+for: it asks whether all of the source's content reached the output — item bodies verbatim, every
+other line by a trimmed match — and whether a second extractor agrees on which items are closed.
 
 **Adopting it: `skills/backlog/reference/adopting.md` is the runbook** — migrate to a scratch dir,
 run `verify-migration.mjs` as the gate, resolve what the migrator refuses to decide, then move it
 into place.
 
-`reference/migration-traps.md` is why the gate exists: nine silent corruptions were live in this
-migrator against a real ledger, and all nine now ship as fixtures. Seven were found by refusing a
+`reference/migration-traps.md` is why the gate exists: ten silent corruptions were live in this
+migrator against a real ledger, and all ten now ship as fixtures. Seven were found by refusing a
 near-match — diff extractions as SETS, since the first adoption compared counts, called 40 close
 enough, and shipped a number wrong by four. The last two were found by a **review of the shipped
 migration**, not by the gate: one of them is a word both extractors were missing, which is the one

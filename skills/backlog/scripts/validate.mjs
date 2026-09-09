@@ -31,6 +31,13 @@ const CLOSED = /^(DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED)\b/u;
 // second config file has to be found, parsed or kept in sync.
 const POLICIES = new Set(["deferred-work"]);
 
+// A YAML single-quoted scalar escapes one thing: a quote, doubled. Strip the wrapper and undo it,
+// or the reader shows the escape — `Exception''s` reached every grooming pass because the writer
+// was fixed and the round-trip was not. Only unwrap when the value is actually quoted: a bare
+// scalar containing '' is not an escape.
+const unquote = (v) => (/^'.*'$/su.test(v) ? v.slice(1, -1).replaceAll("''", "'")
+  : /^".*"$/su.test(v) ? v.slice(1, -1) : v);
+
 /** Frontmatter only — the body is never read, and a file without a fence has none. */
 export const frontmatter = (text) => {
   const out = {};
@@ -44,7 +51,7 @@ export const frontmatter = (text) => {
     }
     const m = /^(?<k>[a-z_]+):\s*(?<v>.*)$/u.exec(line);
     if (m) {
-      out[m.groups.k] = m.groups.v.trim().replace(/^['"]|['"]$/gu, "");
+      out[m.groups.k] = unquote(m.groups.v.trim());
     }
   }
   return out;
@@ -70,6 +77,17 @@ export const scanBacklog = (root) => {
     add("UNKNOWN_POLICY", "deferred-work.md", `frontmatter declares \`policy: ${policy}\`, which this version does not implement`);
   }
   const requireTrigger = policy === "deferred-work";
+
+  // The POINTER SET, not `indexText.includes(name)`: a substring of the whole index matches a file
+  // name that merely appears in a summary or in prose, so an unreferenced detail file reads as
+  // indexed. Basename-keyed, so a pointer written with a different prefix still resolves.
+  const pointerList = [...indexText.matchAll(/^\s*detail:\s*`?(?<p>[^`\s]+)`?\s*$/gmu)].map((m) => m.groups.p);
+  const pointerNames = new Set(pointerList.map((r) => r.split("/").pop()));
+  // Duplicated pointers keep a naive entries-vs-pointers count balanced while an entry goes
+  // unpointed, so they are named rather than silently absorbed.
+  for (const dup of pointerList.filter((r, i) => pointerList.indexOf(r) !== i)) {
+    add("DUPLICATE_POINTER", dup, "two index entries point at the same detail file");
+  }
 
   // --- the detail files ---
   const seen = new Map();
@@ -99,15 +117,14 @@ export const scanBacklog = (root) => {
       if (requireTrigger && open && !fm.trigger) {
         add("NO_TRIGGER", `deferred-work/${name}`, "open with no `trigger` — untriaged, and no bucket applies to it");
       }
-      if (!indexText.includes(name)) {
-        add("UNINDEXED", `deferred-work/${name}`, "no index entry points at this file — invisible to the classifier");
+      if (!pointerNames.has(name)) {
+        add("UNINDEXED", `deferred-work/${name}`, "no `detail:` entry points at this file — invisible to the classifier");
       }
     }
   }
 
   // --- the index's own pointers ---
-  for (const m of indexText.matchAll(/^\s*detail:\s*`?(?<p>[^`\s]+)`?\s*$/gmu)) {
-    const rel = m.groups.p;
+  for (const rel of pointerList) {
     if (!existsSync(path.join(root, rel))) {
       add("DANGLING_DETAIL", rel, "the index points at a detail file that does not exist");
     }

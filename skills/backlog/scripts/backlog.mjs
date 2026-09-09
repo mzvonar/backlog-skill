@@ -12,6 +12,13 @@ import path from "node:path";
 // "is this open?" shares this list, or the newly-closed items still read as open here.
 const CLOSED = /^(DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED)\b/u;
 
+// A YAML single-quoted scalar escapes one thing: a quote, doubled. Strip the wrapper and undo it,
+// or the reader shows the escape — `Exception''s` reached every grooming pass because the writer
+// was fixed and the round-trip was not. Only unwrap when the value is actually quoted: a bare
+// scalar containing '' is not an escape.
+const unquote = (v) => (/^'.*'$/su.test(v) ? v.slice(1, -1).replaceAll("''", "'")
+  : /^".*"$/su.test(v) ? v.slice(1, -1) : v);
+
 const [dir, ...flags] = process.argv.slice(2);
 const all = flags.includes("--all");
 
@@ -23,7 +30,7 @@ const frontmatter = (file) => {
   for (const line of lines.slice(1)) {
     if (line.trim() === "---") break;
     const m = /^(?<k>[a-z_]+):\s*(?<v>.*)$/u.exec(line);
-    if (m) out[m.groups.k] = m.groups.v.replace(/^['"]|['"]$/gu, "");
+    if (m) out[m.groups.k] = unquote(m.groups.v.trim());
   }
   return out;
 };
