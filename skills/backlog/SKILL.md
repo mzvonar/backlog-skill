@@ -101,6 +101,40 @@ Two rules that matter more than the buckets:
   **untriaged**, and the fix is to give it a trigger. Expect many on first adoption: the real corpus
   above had **97 of 194** open items without one, which the monolith hid and this surfaces.
 
+## Wiring grooming into a workflow
+
+Grooming only happens if something makes it happen. Whatever you wire it into — a story-creation
+hook, a PR template, a checklist — that gate **names WHEN and WHERE. It never restates WHAT.**
+
+The buckets, the untriaged rule and the not-a-primary-source rule live in this file. A gate that
+copies them creates two homes for one contract, and the copy drifts silently because nothing
+type-checks prose. Measured on the first adoption: the gate restated the policy in 51 lines, and
+its copy of the untriaged count was wrong twice before anyone noticed.
+
+A gate that fits in a paragraph, and does not:
+
+```text
+Groom the backlog before scoping this work, using the `backlog` skill (<path>/SKILL.md).
+READ ITS `deferred-work` POLICY SECTION AND FOLLOW IT: the four buckets, what makes an item
+untriaged rather than keep-deferred, and why a deferred entry is not a trustworthy primary
+source all live there, and are deliberately not repeated here.
+
+<this repo's ledger, read through the reader rather than by opening the index>
+
+REPORT ONLY. This pass never edits the ledger; promotions and kills are applied by whoever
+scopes the work, after the gate.
+```
+
+Keep in the gate only what is genuinely the *workflow's* and not the backlog's — that report-only
+division of labour, and any repo-local rule about where an agent may write. Everything else is a
+pointer.
+
+**Then guard it, because its failure is silent.** A gate that is deleted, emptied, renamed, or given
+a syntax error does not fail loudly — grooming simply stops happening and the backlog rots with
+nothing to notice. On the first adoption the predecessor's own tooling *promised* a fallback gate
+and never checked it, so the promise pointed at an empty list for months. Whatever holds your gate,
+assert that it still resolves to a live step, and that it still points here.
+
 ## Coexisting with generators
 
 Some tools append to the index directly. BMad's `bmad-build` / `bmad-quick-dev` and

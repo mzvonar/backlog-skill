@@ -126,6 +126,17 @@ afterwards, do not replace it with a presence check for the new skill — the ga
 replacement is *wired*, not whether a file exists, and a second presence check repeats the defect
 under a new filename.
 
+**Write the replacement as a POINTER, not a copy** — SKILL.md's *Wiring grooming into a workflow*
+has the shape. The predecessor skill carried the buckets and the rules in its own body, so the
+obvious move when replacing it is to carry them across. Do not: they live in the skill now, and a
+second copy drifts. On the first adoption the gate restated them in 51 lines and its copy of the
+untriaged count was wrong twice before anyone noticed. The reviewer that caught it was not looking
+at the count — a person asked why the gate did not simply point at the skill.
+
+There is a tell for having got this wrong. If guarding the gate requires asserting the *content* of
+the buckets, the gate is a copy; if it only has to assert that the gate points at the skill and
+that the skill still defines them, it is a pointer.
+
 ---
 
 ## After adoption
