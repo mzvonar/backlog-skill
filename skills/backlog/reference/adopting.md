@@ -133,4 +133,11 @@ under a new filename.
 The index is **hand-maintained from here on**. Do not re-run `migrate.py` over a ledger that has
 been edited since: generators append to the index directly (see SKILL.md → *Coexisting with
 generators*) and a regeneration eats those appends. If a migrator fix lands upstream later, apply
-its effect as an edit to the affected rows, not by regenerating.
+its effect as an edit to the affected rows, not by regenerating. That happened on the first
+adoption — four fixes landed after the ledger was in place, and all four were applied as edits to
+the seven, four and two affected files respectively.
+
+`verify-migration.mjs` stays useful afterwards, but only its coverage half: once items are added by
+hand the detail files outnumber the source ledger's, so items can no longer be lined up by position
+and the status comparison is skipped with a notice. A `CONTENT_DROPPED` finding still means
+something went missing and is still worth acting on.

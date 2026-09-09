@@ -175,9 +175,16 @@ if (items.length === details.length) {
     add("STATUS_DISAGREE", `${path.basename(source)}:${items[n - 1].line}`,
       `the migration wrote '${details[n - 1].status}', this extractor reads OPEN — ${ownText(items[n - 1].block).slice(0, 80)}`);
   }
-} else {
+} else if (details.length < items.length) {
   add("STATUS_UNCHECKED", path.basename(source),
-    "item counts differ, so items cannot be lined up with detail files — fix that first");
+    "fewer detail files than source items, so they cannot be lined up — fix that before reading any status");
+} else {
+  // MORE detail files than source items is the ordinary post-adoption state: the index is
+  // hand-maintained from here, so items get added and the source ledger stops being a mirror.
+  // Reported, not failed — a gate that can never go green again after the day it was adopted is
+  // one people stop running, and this check is still worth running for the coverage half.
+  notices.push(`${details.length - items.length} more detail file(s) than source items — added since the migration.`);
+  notices.push("    Status comparison skipped: items and detail files can no longer be lined up by position.");
 }
 
 // ---------------------------------------------------------------- E. vocabulary gaps

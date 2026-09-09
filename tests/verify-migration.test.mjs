@@ -158,6 +158,23 @@ describe("verify-migration.mjs", () => {
     }
   });
 
+  it("does not fail on items added by hand after adoption — only skips the comparison", () => {
+    // The ordinary post-adoption state: the index is hand-maintained, so detail files outnumber the
+    // source ledger's items and position-matching stops working. A gate that goes permanently red
+    // the day after it is adopted is one people stop running, and its coverage half still works.
+    const { dir, status, stdout } = run(({ detailDir }) => {
+      writeFileSync(path.join(detailDir, "dw-099-added-later.md"),
+        "---\nid: dw-099\nsummary: 'Added by hand after adoption.'\ntrigger: 'someday'\nstatus: open\n---\n- **Added by hand after adoption.**\n");
+    });
+    try {
+      assert.equal(status, 0, `a hand-added item must not fail the gate:\n${stdout}`);
+      assert.match(stdout, /more detail file\(s\) than source items — added since the migration/u);
+      assert.doesNotMatch(stdout, /STATUS_UNCHECKED/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("names marker-shaped words the vocabulary does not know — the vocabulary gap's only signal", () => {
     // The check that would have caught the seven. A vocabulary both implementations share is the
     // one thing a differential check is structurally blind to, so it cannot be a comparison — it
