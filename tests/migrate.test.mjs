@@ -1,8 +1,14 @@
-// The three migration traps, as permanent fixtures.
+// The migration traps, as permanent fixtures.
 //
 // Each was LIVE in migrate.py against a real 3,622-line ledger, and each is silent: the migration
-// completes and the counts look plausible. A synthetic corpus containing all three is the only way
+// completes and the counts look plausible. A synthetic corpus containing all of them is the only way
 // they stay closed — nothing about the shipped output would reveal a regression.
+//
+// The last two are one root cause: the status zone was the item's first PHYSICAL line, while an
+// item's own text runs to its first sub-bullet. Every earlier trap here was closed by normalising
+// before matching; these two were left because the fixture set enumerated the shapes the author had
+// seen rather than the ways the layout can vary. Both were live against the real ledger — four items
+// migrated `open` while their own body said DONE, three of them then reported as untriaged.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -13,8 +19,8 @@ import { describe, it } from "node:test";
 
 const MIGRATE = path.join(import.meta.dirname, "..", "skills", "backlog", "scripts", "migrate.py");
 
-// One section, seven items. Six are closed in six different real spellings; one is open. Two further
-// bullets look closed and are not. A migrator that reads this correctly finds SIX.
+// One section, fourteen items. Eight are closed in eight different real spellings; six are open.
+// Five bullets look closed and are not. A migrator that reads this correctly finds EIGHT.
 const CORPUS = `# Deferred work
 
 ## Deferred from: story 1-1 review
@@ -30,6 +36,23 @@ const CORPUS = `# Deferred work
   - **❌ KILLED (2026-09-01)** a NESTED sub-bullet — context for the parent, not a status for it.
 - **A second open item.** Its body quotes the convention: mark it \`**DONE (YYYY-MM-DD)**\` when retired.
 - **Third open item.** Progress note only: the rem switch is HALF DONE (2026-07-20), not finished.
+- **An item retired in place after the fact.** The original text stays as the record and the
+  marker is appended at the END of the item's own body, several lines below the bullet line.
+  **DONE (2026-09-07)** — closed by the follow-up run.
+- **A marker on the bullet line whose OPENING paren wraps.** **DONE in-story
+  (2026-08-25, review round 1):** the marker starts on line one and its parenthetical begins on
+  the next, so a pattern needing \`(\` on the same physical line finds nothing.
+- **Fourth open item.** It carries continuation text of its own before any child, so the status
+  zone must span these lines without ever reaching the child below.
+  - **KILLED (2026-09-02)** a nested sub-bullet under an item with continuation text.
+- **Fifth open item.** An item's block runs to the next top-level bullet, so it also contains
+  whatever sits between them at the left margin.
+
+### A following sub-heading that is retired — **DONE (2026-09-03)**
+
+**✅ DONE (2026-09-03) — this paragraph retires the sub-heading above, not the bullet before it.**
+
+- **Sixth open item.** It follows that retired group and is not retired by it.
 `;
 
 const migrate = (corpus) => {
@@ -52,10 +75,13 @@ describe("migrate.py", () => {
     try {
       const closed = status.filter((s) => /^(DONE|KILLED)/u.test(s));
       const open = status.filter((s) => s === "open");
-      // SIX closed: documented, emoji, word-before-paren, KILLED, struck-through, line-spanning.
-      // THREE open: the nested-KILLED parent, the convention-quoting body, the HALF DONE note.
-      assert.equal(closed.length, 6, `closed spellings: got ${JSON.stringify(status)}`);
-      assert.equal(open.length, 3, `open items: got ${JSON.stringify(status)}`);
+      // EIGHT closed: documented, emoji, word-before-paren, KILLED, struck-through, line-spanning,
+      // marker appended at the end of the body, marker whose opening paren wraps to the next line.
+      // SIX open: the nested-KILLED parent, the convention-quoting body, the HALF DONE note, the
+      // parent with continuation text above a KILLED child, and the two around the retired
+      // sub-heading — whose marker sits at the left margin INSIDE the fifth item's block.
+      assert.equal(closed.length, 8, `closed spellings: got ${JSON.stringify(status)}`);
+      assert.equal(open.length, 6, `open items: got ${JSON.stringify(status)}`);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

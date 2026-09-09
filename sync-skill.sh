@@ -47,7 +47,13 @@ if [ -n "$FROM" ]; then
   if [ -f "$PIN" ]; then
     WAS="$(sed -n 's/^tree_sha256=//p' "$PIN")"
     NOW="$(python3 "$SRC/scripts/tree-hash.py" "$SRC" 2>/dev/null || echo unavailable)"
-    if [ -n "$WAS" ] && [ "$WAS" != "$NOW" ]; then
+    # `unavailable` on both sides compares EQUAL, which reads as "the pin still matches" — the one
+    # conclusion a broken hasher has not earned. Say it cannot tell instead.
+    if [ "$WAS" = unavailable ] || [ "$NOW" = unavailable ]; then
+      echo ""
+      echo "NOTE: cannot compare $FROM's pin against the copy — tree_sha256 is unavailable on one"
+      echo "      side. The pin stays stale until you commit here and forward-sync that consumer."
+    elif [ -n "$WAS" ] && [ "$WAS" != "$NOW" ]; then
       echo ""
       echo "NOTE: $FROM's pin still names the pre-edit copy (tree_sha256 $(printf %s "$WAS" | cut -c1-12)… != $(printf %s "$NOW" | cut -c1-12)…)."
       echo "      It stays stale until you commit here and forward-sync that consumer."
@@ -83,7 +89,14 @@ rm -rf "$DEST/$SKILL"; mv "$STAGE/skills/$SKILL" "$DEST/$SKILL"
 # from the real remote instead of trusting a hash the same change supplied; only tree_sha256 says
 # what the copy IS — and the two part company the moment someone edits the vendored copy in place, which
 # `--from` exists to support. Recompute with the command in the file to detect that.
-TREEHASH="$(python3 "$DEST/$SKILL/scripts/tree-hash.py" "$DEST/$SKILL" 2>/dev/null || echo unavailable)"
+# Not `2>/dev/null || echo unavailable`: that is how a hasher that could not run AT ALL shipped as
+# a routine-looking `tree_sha256=unavailable`, taking the pin's own documented check down with it in
+# every consumer at once. A digest that cannot be computed is said out loud.
+if TREEHASH="$(python3 "$DEST/$SKILL/scripts/tree-hash.py" "$DEST/$SKILL" 2>&1)"; then :; else
+  echo "WARNING: could not compute tree_sha256 — the pin cannot prove the copy on disk." >&2
+  echo "         tree-hash.py said: $TREEHASH" >&2
+  TREEHASH=unavailable
+fi
 cat > "$DEST/.$SKILL-version" <<V
 # $SKILL vendored copy — managed by sync-skill.sh. DO NOT edit by hand.
 # Re-sync:  <backlog-skill>/sync-skill.sh <this-repo> [--ref <ref> | --worktree]

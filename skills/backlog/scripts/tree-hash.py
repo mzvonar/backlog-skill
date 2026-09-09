@@ -3,14 +3,39 @@
 
     python3 tree-hash.py <dir>        → prints a sha256 hex digest
 
-A thin CLI over `report_keys.tree_hash`, which is where the implementation lives. Consumers use
-this to answer "does the copy on disk still match the commit its pin names?" — the commit sha in
-`.backlog-version` cannot, since it records where the copy CAME FROM and editing a
+Consumers use this to answer "does the copy on disk still match the commit its pin names?" — the
+commit sha in `.backlog-version` cannot, since it records where the copy CAME FROM and editing a
 vendored copy in place is a supported workflow.
+
+Self-contained on purpose. This is the ONE function a vendored copy's integrity proof cannot afford
+to load from elsewhere: an import that is not there degrades to `tree_sha256=unavailable` in the pin
+and takes the whole check with it, silently and in every consumer at once.
 """
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from report_keys import tree_hash
+import hashlib, os, sys
+
+
+def tree_hash(root):
+    """POSIX-sorted relative paths + exec bit + sha256 per file.
+
+    `__pycache__` and `*.pyc` are excluded — they appear from merely running the skill and would
+    make the digest unstable for a copy nobody edited.
+    """
+    rels = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        for fn in filenames:
+            if fn.endswith(".pyc"):
+                continue
+            rels.append(os.path.relpath(os.path.join(dirpath, fn), root).replace(os.sep, "/"))
+    h = hashlib.sha256()
+    for rel in sorted(rels):
+        p = os.path.join(root, rel)
+        h.update(rel.encode() + b"\0")
+        h.update((b"x" if os.access(p, os.X_OK) else b"-") + b"\0")
+        with open(p, "rb") as f:
+            h.update(hashlib.sha256(f.read()).hexdigest().encode() + b"\0")
+    return h.hexdigest()
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

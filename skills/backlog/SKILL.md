@@ -58,7 +58,7 @@ node scripts/backlog.mjs <dir>/deferred-work --all    # include DONE / KILLED
 node scripts/backlog.mjs <dir>/deferred-work --json   # for tooling
 ```
 
-Frontmatter only — bodies are never read. On the real corpus above that is **424 lines against
+Frontmatter only — bodies are never read. On the real corpus above that is **416 lines against
 3,622**, with closed items filtered rather than skimmed past. Open an item's detail file once you
 have selected it.
 
@@ -99,7 +99,7 @@ Two rules that matter more than the buckets:
   Verify against the code before promoting — an item can be silently already-done.
 - **An open item with no `trigger` cannot be classified.** It is not "keep-deferred", it is
   **untriaged**, and the fix is to give it a trigger. Expect many on first adoption: the real corpus
-  above had **111 of 211** open items without one, which the monolith hid and this surfaces.
+  above had **108 of 207** open items without one, which the monolith hid and this surfaces.
 
 ## Coexisting with generators
 
@@ -135,4 +135,4 @@ not state is emitted empty and counted, so gaps are visible rather than guessed.
 
 **Check the migration against an independent count before committing it.** Adoption is the one
 moment the old format's inconsistencies must be parsed, and they are worse than they look — see
-`reference/migration-traps.md` for the three that corrupted this migrator before they were found.
+`reference/migration-traps.md` for the five that corrupted this migrator before they were found.

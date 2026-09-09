@@ -9,7 +9,7 @@ A single append-only list works until it doesn't. Measured on a real one before 
 **3,622 lines, 251 items, 85 sections.** Every pass over it read the whole file to answer one
 question about a handful of items, and every concurrent branch collided on the same trailing lines.
 
-After: **424 lines read instead of 3,622**, closed items filtered rather than skimmed past, and the
+After: **416 lines read instead of 3,622**, closed items filtered rather than skimmed past, and the
 full record for an item one file away.
 
 ## Shape
@@ -49,9 +49,10 @@ python3 scripts/migrate.py <dir>/deferred-work.md <out>   # adopt an existing mo
 frontmatter is derived from it, never invented. Fields the source does not state are emitted empty
 and counted, so the gaps are visible.
 
-**Read `reference/migration-traps.md` before adopting.** Three silent corruptions were live in this
-migrator against a real ledger; all three ship as fixtures, and each was found only by cross-checking
-against an independent count and refusing a near-match.
+**Read `reference/migration-traps.md` before adopting.** Five silent corruptions were live in this
+migrator against a real ledger; all five ship as fixtures, and each was found only by cross-checking
+against an independent extraction and refusing a near-match. Diff the two as SETS: the first
+adoption compared counts, called 40 close enough, and shipped a number that was wrong by four.
 
 ## Install
 

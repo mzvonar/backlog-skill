@@ -27,18 +27,32 @@ for a, b in zip(secs, secs[1:] + [len(lines)]):
         block = "\n".join(body[s:e]).rstrip()
         if not block.strip():
             continue
-        # Status is written five ways in the real corpus: `**DONE (d)**`, `*** DONE (d, story x)**`
-        # with an emoji, `**DONE upstream (d)**`, `**KILLED (d, ...)**`, and struck-through. Two
-        # traps: `HALF DONE (d)` is not a status, and prose quoting `**DONE (YYYY-MM-DD)**` as the
-        # convention is not one either. Detect loosely, restrict to the item's HEAD, exclude the
-        # literal placeholder, and REPORT anything inferred rather than silently deciding.
-        # The item's OWN bullet line, not the first N characters: a 200-char window reaches into
-        # nested sub-bullets, and an item whose CHILD was killed would inherit the child's status.
-        # Measured: that misread 2 of 42 items before this was scoped to line 1.
-        head_zone = block.split("\n")[0]
-        # The closing paren is OPTIONAL: a status parenthetical wraps onto the next line in the real
-        # corpus (`- **DONE (2026-08-31, chore/... ` closes two lines later), so requiring `)` on
-        # line 1 silently drops it. Line-spanning data, per-line pattern — take the date and stop.
+        # The status marker has many spellings and two lookalikes that must not match; the table in
+        # reference/migration-traps.md is the authority. Detect loosely, scope deliberately, exclude
+        # the literal placeholder, and REPORT anything inferred rather than deciding silently.
+        #
+        # The zone is the item's OWN TEXT, flattened — its bullet line plus the continuation lines
+        # under it. Where it ENDS is structural, not positional, and both ends cost a real defect:
+        #   a child bullet ends it, or a killed sub-bullet retires its parent (misread 2 of 42);
+        #   the left margin ends it, or a trailing `### ` heading and the paragraph under it — which
+        #   belong to the next group and carry their own marker — get read as this item's status.
+        # Flattening is what makes the zone independent of where the author happened to wrap: at the
+        # head, appended at the END when an item is retired in place, or with the parenthetical
+        # opening on the next line are all one status, and line 1 saw only the first.
+        #
+        # Measured on the real ledger: scoping to line 1 migrated four DONE items as `open`, three
+        # then reported as untriaged; widening to the whole block retired an open item with a DONE
+        # written eleven lines below it about something else.
+        own = []
+        for k, ln in enumerate(block.split("\n")):
+            if k and re.match(r'^\s+[-*] ', ln):
+                break                                   # a child bullet: context, not status
+            if k and ln.strip() and not ln[0].isspace():
+                break                                   # left margin: no longer this item's text
+            own.append(ln)
+        head_zone = " ".join(" ".join(own).split())
+        # The closing paren stays OPTIONAL: it can fall outside the zone when the parenthetical runs
+        # past the item's own text. Take the date and stop.
         m = re.search(r'\*\*[^*]{0,4}(?<!HALF )(DONE|KILLED)[^(*]{0,12}\((?P<d>[^)\n]*)\)?', head_zone)
         if m and re.search(r'Y{4}|MM-DD', m.group('d')):
             m = None
