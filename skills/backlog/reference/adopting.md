@@ -1,0 +1,124 @@
+# Adopting the format in a repo
+
+Written after doing it once, on a 3,622-line / 251-item ledger. Everything below that reads like
+excessive caution is there because skipping it cost a round.
+
+The shape of the job: **migrate into a scratch directory, prove nothing was lost, resolve by hand
+what the migrator refuses to decide, then move it into place.** Never migrate in place — the source
+is the only copy of the thing you are checking against.
+
+---
+
+## The order
+
+```bash
+LEDGER=path/to/deferred-work.md
+OUT=$(mktemp -d)
+
+python3 scripts/migrate.py "$LEDGER" "$OUT"              # 1. migrate to scratch
+node scripts/verify-migration.mjs "$LEDGER" "$OUT"       # 2. nothing lost, extractions agree
+node scripts/validate.mjs "$OUT"                         # 3. structure, pointers, policy
+```
+
+Step 2 is the gate. It exits non-zero if any source content is unaccounted for or if a second
+extractor disagrees about which items are closed, and **both of those happened on the first real
+adoption** — see `migration-traps.md`. Do not move anything into place while it is red.
+
+Then resolve what step 1 reported (below), move the output into place, and repoint whatever used to
+read the monolith.
+
+---
+
+## What `migrate.py` reports, and what to do about each
+
+It prints counts rather than deciding. Each line is a task.
+
+### `open with NO trigger: N`
+
+Expected, and large on first adoption — **108 of 207** on the real corpus. The monolith hid them;
+the `deferred-work` policy surfaces them because an item with no trigger cannot be classified into
+any bucket. It is not "keep-deferred", it is **untriaged**.
+
+**Do not invent triggers to clear the number.** A guessed trigger is worse than a missing one: it
+reads as a decision someone made. Give them triggers incrementally, a few per grooming pass, when
+the surrounding work makes the real trigger obvious. Adoption is not the moment to triage 108 items.
+
+### `sections with NO bullet items: N`
+
+A `## ` section holding prose but no top-level bullet — on the real corpus, a `### ` heading with
+**Trigger / What / Why / Owner** paragraphs, which is an item by every meaning except this
+migrator's. Its content is kept in the index so nothing is lost, but it is **invisible to
+`backlog.mjs`**, which reads detail frontmatter.
+
+Promote each one by hand into a proper detail file, then replace the section's prose in the index
+with the item's entry. Notably the one found was the *newest* entry in the ledger — the shape a
+ledger drifts toward is the shape the migrator is least likely to model.
+
+### `open items under a RETIRED/DONE section heading: N`
+
+The section heading carries a status its items do not. **The migrator reports these and never
+applies them**, deliberately: a retired section usually means its items are done, but a DONE
+section can hold one live item and only a person can tell which.
+
+Read the section's banner and decide per item. On the real corpus there was one, under a heading
+reading *"all five seams are closed … do not action"* — it had migrated as live work, which is
+exactly what that banner existed to prevent. Set its `status` to the ledger's own closed
+vocabulary, not the heading's word: `backlog.mjs` filters on `DONE` / `KILLED`, so a
+`status: RETIRED (…)` still reads as open.
+
+### `status inferred/ambiguous: N`
+
+Struck-through items with no date. They get `KILLED (date unknown)`. Fix the ones you can date.
+
+---
+
+## Two decisions to make explicitly
+
+**Keep `policy: deferred-work`?** `migrate.py` writes it into the index frontmatter. Keeping it is
+what makes an open item without a `trigger` a reported finding. Drop the line and you have a plain
+backlog where items are actionable when picked and `trigger` is optional — which also silently
+retires the untriaged count. Decide it, do not inherit it.
+
+**What was in the preamble?** The migration replaces everything above the first `## ` heading with
+the index's own header, on purpose: a preamble usually documents the old layout ("one bullet = one
+item", "mark it `**DONE (YYYY-MM-DD)**`"), which is what stops being true. `verify-migration.mjs`
+prints those lines as a NOTICE rather than a finding. Read them — that is also where a policy note,
+an owner, or a link would have been.
+
+---
+
+## Known rough edges
+
+**Some index summaries read as a status marker.** `summary` is derived from the item's first bold
+span, so an item whose marker is written at the head of the bullet — `- **DONE (2026-08-04)** —
+decided at the retro…` — yields `summary: DONE (2026-08-04)`, which names nothing. **36 of 251** on
+the real corpus, all of them closed items, so they are rows you meet only when reading the index
+directly or passing `--all`. Fixing it means skipping a leading marker and falling back to the
+first sentence, and for some items no title survives outside a `~~strikethrough~~` further down.
+
+---
+
+## Retiring a predecessor grooming skill
+
+If the repo already has something that reads the monolith, the format change is also its
+retirement. One lesson generalises beyond any particular tool:
+
+**A check that warns about a missing dependency, and names the fallback, does not verify the
+fallback exists.** On the real adoption, two files checked for the predecessor skill and said
+grooming would fall back to a customization hook. It was warn-only, so nothing broke — and the hook
+had never been written. Deleting the skill would have dropped grooming entirely, with a warning
+that reads like housekeeping as the only signal.
+
+So: **wire the replacement first, prove it resolves, then delete.** And when you fix the check
+afterwards, do not replace it with a presence check for the new skill — the gate is whether the
+replacement is *wired*, not whether a file exists, and a second presence check repeats the defect
+under a new filename.
+
+---
+
+## After adoption
+
+The index is **hand-maintained from here on**. Do not re-run `migrate.py` over a ledger that has
+been edited since: generators append to the index directly (see SKILL.md → *Coexisting with
+generators*) and a regeneration eats those appends. If a migrator fix lands upstream later, apply
+its effect as an edit to the affected rows, not by regenerating.

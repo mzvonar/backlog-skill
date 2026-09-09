@@ -123,16 +123,29 @@ instruction to an agent. Extra frontmatter fields and a changed index shape brea
 
 ## Adopting it
 
+Migrate to a **scratch directory**, prove nothing was lost, then move it into place. The source is
+the only copy of the thing you are checking against, so never migrate over it.
+
 ```bash
-python3 scripts/migrate.py <dir>/deferred-work.md <output-dir>   # index + detail files
-node scripts/validate.mjs <dir>                                  # structure, pointers, policy
+LEDGER=<dir>/deferred-work.md; OUT=$(mktemp -d)
+
+python3 scripts/migrate.py "$LEDGER" "$OUT"           # index + detail files
+node scripts/verify-migration.mjs "$LEDGER" "$OUT"    # ← the gate. non-zero = do not commit
+node scripts/validate.mjs "$OUT"                      # structure, pointers, policy
 ```
 
-`migrate.py` is **lossless by construction** — every item's original block is written verbatim into
+`migrate.py` is **lossless for items by construction** — every item's block is written verbatim into
 its detail file, and frontmatter is derived from that block, never invented. A field the source does
-not state is emitted empty and counted, so gaps are visible rather than guessed. It writes
-`policy: deferred-work` into the index; delete that line to run a plain backlog.
+not state is emitted empty and counted, so gaps are visible rather than guessed. It also prints what
+it refuses to decide: untriaged items, sections with no bullets, and open items under a retired
+heading. Each of those lines is a task, not a statistic.
 
-**Check the migration against an independent count before committing it.** Adoption is the one
-moment the old format's inconsistencies must be parsed, and they are worse than they look — see
-`reference/migration-traps.md` for the seven that corrupted this migrator before they were found.
+`verify-migration.mjs` asks the two questions the counts cannot. **Does every byte of the source
+appear somewhere in the output?** — item bodies read a clean 251/251 on the real corpus while 23
+section intros and one whole item were on the floor. **Does a second extractor agree on WHICH items
+are closed?** — the two disagreed 44 against 40, and diffing them as *sets* rather than sizes is
+what turned a plausible near-match into four named items.
+
+Both of those fired on the first real adoption. **`reference/adopting.md` is the runbook** — the
+order, what to do with each reported count, and the two decisions to make explicitly.
+`reference/migration-traps.md` is why: seven silent corruptions, each live against a real ledger.

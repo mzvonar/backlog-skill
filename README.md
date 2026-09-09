@@ -39,20 +39,32 @@ rather than *"what is next?"*. An unrecognised policy is refused, never ignored.
 ## Use
 
 ```bash
-node scripts/backlog.mjs  <dir>/deferred-work          # open items, one line each
-node scripts/backlog.mjs  <dir>/deferred-work --all    # include DONE / KILLED
-node scripts/validate.mjs <dir>                        # structure, pointers, policy
-python3 scripts/migrate.py <dir>/deferred-work.md <out>   # adopt an existing monolith
+node scripts/backlog.mjs         <dir>/deferred-work        # open items, one line each
+node scripts/backlog.mjs         <dir>/deferred-work --all  # include DONE / KILLED
+node scripts/validate.mjs        <dir>                      # structure, pointers, policy
+
+python3 scripts/migrate.py          <ledger.md> <out>       # adopt an existing monolith
+node    scripts/verify-migration.mjs <ledger.md> <out>      # ...and prove nothing was lost
 ```
 
-`migrate.py` is lossless by construction: every item's original block is copied verbatim, and
+`migrate.py` is lossless **for items** by construction: every item's block is copied verbatim, and
 frontmatter is derived from it, never invented. Fields the source does not state are emitted empty
 and counted, so the gaps are visible.
 
-**Read `reference/migration-traps.md` before adopting.** Seven silent corruptions were live in this
-migrator against a real ledger; all seven ship as fixtures, and each was found only by cross-checking
-against an independent extraction and refusing a near-match. Diff the two as SETS: the first
-adoption compared counts, called 40 close enough, and shipped a number that was wrong by four.
+For items — the qualifier is the lesson. A ledger also holds section headings, intro prose and the
+occasional item written with no bullet at all, none of which an item-driven walk counts, and all of
+which it once dropped while reporting a clean 251 of 251. That is what `verify-migration.mjs` is
+for: it asks whether every byte of the source reached the output, and whether a second extractor
+agrees on which items are closed.
+
+**Adopting it: `skills/backlog/reference/adopting.md` is the runbook** — migrate to a scratch dir,
+run `verify-migration.mjs` as the gate, resolve what the migrator refuses to decide, then move it
+into place.
+
+`reference/migration-traps.md` is why the gate exists: seven silent corruptions were live in this
+migrator against a real ledger, all seven now ship as fixtures, and each was found only by refusing
+a near-match. Diff extractions as SETS — the first adoption compared counts, called 40 close
+enough, and shipped a number that was wrong by four.
 
 ## Install
 

@@ -8,7 +8,11 @@ They are recorded because they are properties of *hand-written markdown ledgers 
 one repo's file. Anyone adopting this format will meet them.
 
 **Catch them the same way they were caught: cross-check the migrator's status count against an
-independent count of the source, and refuse a near-match.** The sequence on the real corpus was
+independent count of the source, and refuse a near-match.** `scripts/verify-migration.mjs` now does
+both halves of that automatically and is the gate in `adopting.md`; run against the migration that
+shipped with traps 4–7 live it reports 85 dropped-content findings and exactly the four
+status disagreements that were found by hand. Read on anyway — it is a differential check between
+two implementations, so it cannot see a shape they both get wrong, and that is what a near-match is. The sequence on the real corpus was
 11 → 42 → 39 → 40 → **44**, and every intermediate number looked reasonable.
 
 That `40` is the point of this page. It shipped as "the independently verified answer" and was

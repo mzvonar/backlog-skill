@@ -1,0 +1,171 @@
+// verify-migration.mjs — the check that runs between migrating and committing.
+//
+// Its whole job is to FIRE, so every row here breaks something specific and asserts the code that
+// catches it. The clean control comes first and is not optional: every negative row would also
+// pass on a checker that reports nothing at all.
+//
+// Measured against the real corpus's own history: run against the migration that shipped with
+// traps 4–7 live, it reports 85 CONTENT_DROPPED and exactly the 4 STATUS_DISAGREE items that were
+// found by hand — at lines 507, 1956, 3408 and 3413.
+
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, it } from "node:test";
+
+const SKILL = path.join(import.meta.dirname, "..", "skills", "backlog", "scripts");
+const MIGRATE = path.join(SKILL, "migrate.py");
+const VERIFY = path.join(SKILL, "verify-migration.mjs");
+
+const CORPUS = `# Deferred work
+
+Preamble prose that documents the old layout and is replaced on purpose.
+
+## Section one, with intro prose
+
+Context that no item repeats — why these were parked and who owns them.
+
+- **A closed item.** **DONE (2026-08-04)** shipped.
+- **An open item.** It stays open.
+  - **KILLED (2026-09-01)** a child bullet, which is context and not a status.
+
+## Section two
+
+- **Another open item.** With a body of its own.
+`;
+
+// Runs migrate then verify, and returns verify's exit code and output rather than throwing.
+const run = (mutate = () => {}) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "dbk-vm-"));
+  const src = path.join(dir, "deferred-work.md");
+  writeFileSync(src, CORPUS);
+  const out = path.join(dir, "out");
+  execFileSync("python3", [MIGRATE, src, out], { encoding: "utf-8" });
+  mutate({ dir, out, src, detailDir: path.join(out, "deferred-work"), index: path.join(out, "deferred-work.md") });
+  let status = 0;
+  let stdout = "";
+  try {
+    stdout = execFileSync("node", [VERIFY, src, out], { encoding: "utf-8" });
+  } catch (e) {
+    status = e.status;
+    stdout = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+  }
+  return { dir, status, stdout };
+};
+
+const detail = (detailDir, needle) => {
+  const name = readdirSync(detailDir).find((n) => n.includes(needle));
+  assert.ok(name, `no detail file matching ${needle} in ${readdirSync(detailDir)}`);
+  return path.join(detailDir, name);
+};
+
+describe("verify-migration.mjs", () => {
+  it("passes a clean migration — the positive control", () => {
+    // Mandatory: every row below would also pass against a checker that finds nothing, ever.
+    const { dir, status, stdout } = run();
+    try {
+      assert.equal(status, 0, `expected a clean pass, got:\n${stdout}`);
+      assert.match(stdout, /nothing dropped, both extractions agree on 1 closed/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("treats the replaced preamble as a NOTICE, not a failure", () => {
+    // The migration replaces the file's preamble with the index header on purpose. Reported so the
+    // adopter reads it — a policy note or an owner would have lived there — but it cannot fail.
+    const { dir, status, stdout } = run();
+    try {
+      assert.equal(status, 0);
+      assert.match(stdout, /NOTICE/u);
+      assert.match(stdout, /Preamble prose that documents the old layout/u);
+      assert.doesNotMatch(stdout, /CONTENT_DROPPED/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("catches a section's intro prose going missing — traps 6 and 7", () => {
+    // The failure with no signature: item counts stay perfect while a section's context is gone.
+    const { dir, status, stdout } = run(({ index }) => {
+      const t = readFileSync(index, "utf-8");
+      writeFileSync(index, t.replace("Context that no item repeats — why these were parked and who owns them.\n", ""));
+    });
+    try {
+      assert.equal(status, 1, `expected a finding, got:\n${stdout}`);
+      assert.match(stdout, /CONTENT_DROPPED/u);
+      assert.match(stdout, /Context that no item repeats/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("catches a status the second extractor disagrees with — traps 4 and 5", () => {
+    const { dir, status, stdout } = run(({ detailDir }) => {
+      const f = detail(detailDir, "a-closed-item");
+      writeFileSync(f, readFileSync(f, "utf-8").replace(/^status: .*$/mu, "status: open"));
+    });
+    try {
+      assert.equal(status, 1, `expected a finding, got:\n${stdout}`);
+      assert.match(stdout, /STATUS_DISAGREE/u);
+      assert.match(stdout, /this extractor reads CLOSED, the migration wrote 'open'/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("catches the disagreement in the other direction too", () => {
+    // Both directions matter: a migration that retires a live item is worse than one that misses a
+    // closure, and a one-directional check would call it clean.
+    const { dir, status, stdout } = run(({ detailDir }) => {
+      const f = detail(detailDir, "an-open-item");
+      writeFileSync(f, readFileSync(f, "utf-8").replace(/^status: open$/mu, "status: DONE (2026-01-01)"));
+    });
+    try {
+      assert.equal(status, 1, `expected a finding, got:\n${stdout}`);
+      assert.match(stdout, /the migration wrote 'DONE \(2026-01-01\)', this extractor reads OPEN/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("catches a detail body that is no longer the source's text", () => {
+    const { dir, status, stdout } = run(({ detailDir }) => {
+      const f = detail(detailDir, "another-open-item");
+      writeFileSync(f, readFileSync(f, "utf-8").replace("With a body of its own.", "Reworded."));
+    });
+    try {
+      assert.equal(status, 1, `expected a finding, got:\n${stdout}`);
+      assert.match(stdout, /BODY_NOT_VERBATIM/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("catches a whole item that never reached a detail file", () => {
+    const { dir, status, stdout } = run(({ detailDir }) => unlinkSync(detail(detailDir, "another-open-item")));
+    try {
+      assert.equal(status, 1, `expected a finding, got:\n${stdout}`);
+      assert.match(stdout, /ITEM_COUNT/u);
+      // With the counts out of step, items cannot be lined up with detail files — so the status
+      // comparison says it did not run rather than reporting a screenful of false disagreements.
+      assert.match(stdout, /STATUS_UNCHECKED/u);
+      assert.doesNotMatch(stdout, /STATUS_DISAGREE/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("exits 2 on a bad invocation, never 1", () => {
+    // Usage failure must not be readable as "the migration has findings".
+    for (const argv of [[], [path.join(tmpdir(), "dbk-nope.md"), path.join(tmpdir(), "dbk-nope")]]) {
+      assert.throws(
+        () => execFileSync("node", [VERIFY, ...argv], { encoding: "utf-8", stdio: "pipe" }),
+        (e) => e.status === 2,
+        `expected exit 2 for argv ${JSON.stringify(argv)}`,
+      );
+    }
+  });
+});
