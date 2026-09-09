@@ -9,7 +9,7 @@ A single append-only list works until it doesn't. Measured on a real one before 
 **3,622 lines, 251 items, 85 sections.** Every pass over it read the whole file to answer one
 question about a handful of items, and every concurrent branch collided on the same trailing lines.
 
-After: **416 lines read instead of 3,622**, closed items filtered rather than skimmed past, and the
+After: **402 lines read instead of 3,622**, closed items filtered rather than skimmed past, and the
 full record for an item one file away.
 
 ## Shape
@@ -61,10 +61,12 @@ agrees on which items are closed.
 run `verify-migration.mjs` as the gate, resolve what the migrator refuses to decide, then move it
 into place.
 
-`reference/migration-traps.md` is why the gate exists: seven silent corruptions were live in this
-migrator against a real ledger, all seven now ship as fixtures, and each was found only by refusing
-a near-match. Diff extractions as SETS — the first adoption compared counts, called 40 close
-enough, and shipped a number that was wrong by four.
+`reference/migration-traps.md` is why the gate exists: nine silent corruptions were live in this
+migrator against a real ledger, and all nine now ship as fixtures. Seven were found by refusing a
+near-match — diff extractions as SETS, since the first adoption compared counts, called 40 close
+enough, and shipped a number wrong by four. The last two were found by a **review of the shipped
+migration**, not by the gate: one of them is a word both extractors were missing, which is the one
+class a check built on two implementations agreeing cannot see.
 
 ## Install
 

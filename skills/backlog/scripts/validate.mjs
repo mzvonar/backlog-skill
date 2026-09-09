@@ -16,6 +16,13 @@ import { pathToFileURL } from "node:url";
 
 const REQUIRED = ["id", "summary", "status"];
 
+// The closed vocabulary is CORPUS DATA, not a constant. The first real ledger documented two
+// words in its own header and used six; assuming the header cost 7 items, which migrated `open`
+// into the untriaged set. Widening `migrate.py` alone is half a fix — every consumer that decides
+// "is this open?" shares this list, or the newly-closed items still read as open here.
+const CLOSED = /^(DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED)\b/u;
+
+
 // Policies differ in what makes an item ACTIONABLE, and nothing else.
 //   deferred-work — an open item must say when it becomes actionable (`trigger`). Parked work with
 //                   no trigger is untriaged: no bucket applies to it, so it cannot be groomed.
@@ -88,7 +95,7 @@ export const scanBacklog = (root) => {
       if (fm.id) {
         seen.set(fm.id, name);
       }
-      const open = !/^(DONE|KILLED)/u.test(fm.status ?? "");
+      const open = !CLOSED.test(fm.status ?? "");
       if (requireTrigger && open && !fm.trigger) {
         add("NO_TRIGGER", `deferred-work/${name}`, "open with no `trigger` — untriaged, and no bucket applies to it");
       }
@@ -109,10 +116,21 @@ export const scanBacklog = (root) => {
   // --- generator appends that grooming has not promoted ---
   // Not a defect — a state. An entry appended by a tool has no detail file, so no trigger and no
   // status, and it stays untriaged until someone promotes it. Reported so it cannot be forgotten.
+  //
+  // TWO shapes, because BMad's changed and a repo runs whichever version it has installed. Keying
+  // only on the newer one made this blind to the version actually installed where it was first
+  // adopted: a code-review deferral landed in the index and NOTHING reported it — not this, not the
+  // reader. Check the repo's own `_bmad/_config/manifest.yaml` rather than assuming the latest.
+  //   6.12+  `- source_spec: … / summary: … / evidence: …`   (a keyed entry)
+  //   6.9    `- <one bullet per finding with description>`   (a bare bullet, no key)
   const entries = [...indexText.matchAll(/^\s*-\s+(?:id|source_spec):/gmu)].length;
   const pointers = [...indexText.matchAll(/^\s*detail:/gmu)].length;
   if (entries > pointers) {
     add("UNPROMOTED_APPENDS", "deferred-work.md", `${entries - pointers} index entr(ies) have no \`detail:\` — appended by a tool, not yet triaged`);
+  }
+  const bare = [...indexText.matchAll(/^-[ \t]+(?!id:|source_spec:)(?<text>\S.*)$/gmu)];
+  for (const m of bare) {
+    add("RAW_APPEND", "deferred-work.md", `a bare bullet with no \`id:\` — a generator append awaiting promotion: ${m.groups.text.slice(0, 60)}`);
   }
 
   return findings;

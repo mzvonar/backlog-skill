@@ -200,3 +200,89 @@ describe("migrate.py — what is not an item", () => {
     }
   });
 });
+
+// The closed vocabulary. A ledger's header documented two words; the ledger used six, and the four
+// it never documented retired 7 items that migrated `open` into the untriaged set — presented to
+// every grooming pass as live work, two of them saying "do not action" verbatim. Neither the
+// migrator nor its differential gate could see it: both knew only DONE|KILLED.
+const VOCAB = `# Deferred work
+
+## Closed six ways, hedged three ways
+
+- **DONE (2026-08-04)** the documented one.
+- **KILLED (2026-08-04)** the other documented one.
+- **CLOSED (2026-09-08, deletePerson aggregate row lock)** nine of these in the real ledger.
+- **RETIRED (2026-08-07, story 3-7 groom)** four of these; two said "do not action".
+- **SUPERSEDED the same day — FIXED upstream at \`2c8bf973\`.** No date parenthetical at all.
+- **RESOLVED — the A2 five-seam block (:692-713).** A paren that is not a date.
+- **◐ MOSTLY CLOSED (2026-09-08)** a hedge in front of a closure is not a closure.
+- **🟡 PARTIALLY LANDED (2026-08-10)** nor is this.
+- **NOT done at 4.3** nor is this.
+- **STILL OPEN, explicitly not fired at story 4-1.** Ordinary emphasis, not a marker.
+`;
+
+describe("migrate.py — the closed vocabulary", () => {
+  it("closes on every word the corpus uses, not just the two its header documented", () => {
+    const { dir, status } = migrate(VOCAB);
+    try {
+      const closed = status.filter((s) => /^(DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED)/u.test(s));
+      assert.equal(closed.length, 6, `expected six closed spellings, got ${JSON.stringify(status)}`);
+      for (const w of ["DONE", "KILLED", "CLOSED", "SUPERSEDED", "RETIRED", "RESOLVED"]) {
+        assert.ok(status.some((s) => s.startsWith(w)), `${w} did not close an item: ${JSON.stringify(status)}`);
+      }
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("leaves a HEDGED closure open — the tool asks instead of guessing", () => {
+    // "mostly closed" is a person's call. Guessing either way is worse than reporting.
+    const { dir, status } = migrate(VOCAB);
+    try {
+      assert.equal(status.filter((s) => s === "open").length, 4, `got ${JSON.stringify(status)}`);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("records a closure with no date as `(date unknown)` and reports it", () => {
+    // The alternative was leaving it open, which is how two of the seven were lost. A wrong-looking
+    // date is visible; an item silently back in the untriaged set is not.
+    const { dir, status, stdout } = migrate(VOCAB);
+    try {
+      assert.ok(status.includes("SUPERSEDED (date unknown)"), `got ${JSON.stringify(status)}`);
+      assert.ok(status.includes("RESOLVED (date unknown)"), `got ${JSON.stringify(status)}`);
+      assert.match(stdout, /status inferred\/ambiguous: 2/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});
+
+// `repr()` was used to quote YAML scalars. Python's escaping is not YAML's, and both divergences
+// shipped into the first real corpus.
+const QUOTING = String.raw`# Deferred work
+
+## Quoting
+
+- **A regex the item quotes: ` + "`" + String.raw`^conformance/.*\.md$` + "`" + String.raw`.** A backslash must stay one backslash.
+- **` + "`" + String.raw`RequestBodyMissingException` + "`" + String.raw`'s KDoc says "a createPerson request".** An apostrophe, inside quotes.
+`;
+
+describe("migrate.py — frontmatter is YAML, not Python", () => {
+  it("keeps a backslash literal and doubles an apostrophe", () => {
+    const { dir, detailDir } = (() => {
+      const r = migrate(QUOTING);
+      return { ...r, detailDir: path.join(r.dir, "out", "deferred-work") };
+    })();
+    try {
+      const all = readdirSync(detailDir).map((n) => readFileSync(path.join(detailDir, n), "utf-8")).join("\n");
+      assert.ok(all.includes(String.raw`\.md$`), "the backslash was doubled — the record no longer matches its source");
+      assert.ok(!all.includes(String.raw`\\.md$`), "a doubled backslash is still present");
+      assert.ok(all.includes(`''s KDoc`), "the apostrophe is not YAML-escaped as ''");
+      assert.ok(!all.includes(String.raw`\'s KDoc`), String.raw`\' is not valid inside a YAML single-quoted scalar`);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});

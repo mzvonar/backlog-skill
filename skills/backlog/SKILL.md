@@ -58,7 +58,7 @@ node scripts/backlog.mjs <dir>/deferred-work --all    # include DONE / KILLED
 node scripts/backlog.mjs <dir>/deferred-work --json   # for tooling
 ```
 
-Frontmatter only — bodies are never read. On the real corpus above that is **416 lines against
+Frontmatter only — bodies are never read. On the real corpus above that is **402 lines against
 3,622**, with closed items filtered rather than skimmed past. Open an item's detail file once you
 have selected it.
 
@@ -99,27 +99,32 @@ Two rules that matter more than the buckets:
   Verify against the code before promoting — an item can be silently already-done.
 - **An open item with no `trigger` cannot be classified.** It is not "keep-deferred", it is
   **untriaged**, and the fix is to give it a trigger. Expect many on first adoption: the real corpus
-  above had **108 of 207** open items without one, which the monolith hid and this surfaces.
+  above had **101 of 200** open items without one, which the monolith hid and this surfaces.
 
 ## Coexisting with generators
 
-Some tools append to the index directly. BMad's `bmad-build` and `bmad-code-review` both hardcode
-`{implementation_artifacts}/deferred-work.md` and write:
+Some tools append to the index directly. BMad's `bmad-build` / `bmad-quick-dev` and
+`bmad-code-review` all hardcode `{implementation_artifacts}/deferred-work.md`. **The shape depends
+on the version installed — check `_bmad/_config/manifest.yaml`, do not assume the newest:**
 
 ```markdown
-- source_spec: `<spec>`
-  summary: <one sentence>
-  evidence: <why this is real>
+6.12+   - source_spec: `<spec>`        6.9    - <one bullet per finding, with description>
+          summary: <one sentence>
+          evidence: <why this is real>
 ```
 
 That is why the index keeps its path and stays **hand-maintained rather than generated**: a
 generated index would silently eat those appends on the next regeneration.
 
-Such an entry has no detail file, so no `status` and no `trigger`. Treat it as **open and
-untriaged**; grooming promotes it into a detail file. `scripts/validate.mjs` counts them.
+Either shape has no detail file, so no `status` and no `trigger`. Treat it as **open and
+untriaged**; grooming promotes it into a detail file. `scripts/validate.mjs` reports both
+(`UNPROMOTED_APPENDS` for the keyed shape, `RAW_APPEND` for the bare one) — it keyed only on the
+newer shape until a repo running the older one showed that an append could land in the index with
+nothing reporting it at all.
 
-Verified against BMad 6.12.0: **no executable in the package reads the file** — every reference is an
-instruction to an agent. Extra frontmatter fields and a changed index shape break nothing.
+**No executable in the BMad package reads the file** — every reference is an instruction to an
+agent (checked on 6.9.0 and 6.12.0). Extra frontmatter fields and a changed index shape break
+nothing.
 
 ## Adopting it
 
@@ -148,4 +153,5 @@ what turned a plausible near-match into four named items.
 
 Both of those fired on the first real adoption. **`reference/adopting.md` is the runbook** — the
 order, what to do with each reported count, and the two decisions to make explicitly.
-`reference/migration-traps.md` is why: seven silent corruptions, each live against a real ledger.
+`reference/migration-traps.md` is why: nine silent corruptions, each live against a real ledger —
+including one the gate itself could not see, because both extractors were missing the same word.

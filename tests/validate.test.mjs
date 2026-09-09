@@ -79,6 +79,15 @@ describe("scanBacklog", () => {
       writeFileSync(path.join(d, "deferred-work.md"),
         INDEX + "- source_spec: `spec-9.md`\n  summary: appended by a tool\n  evidence: why\n"),
       ["UNPROMOTED_APPENDS"]],
+    // The OTHER append shape. BMad 6.9 writes "one bullet per finding with description" — no key at
+    // all — so keying only on `source_spec:` was blind to the version actually installed where this
+    // was first adopted: a code-review deferral could land in the index with NOTHING reporting it,
+    // not this and not the reader. Which shape a repo gets is a fact about its
+    // `_bmad/_config/manifest.yaml`, never about which version is newest.
+    ["a bare-bullet generator append, the older shape with no key", (d) =>
+      writeFileSync(path.join(d, "deferred-work.md"),
+        INDEX + "- Guard the corrupt-enum read path — pre-existing, deferred.\n"),
+      ["RAW_APPEND"]],
   ];
 
   for (const [name, mutate, expected] of offenders) {

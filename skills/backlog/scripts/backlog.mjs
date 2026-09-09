@@ -6,6 +6,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+// The closed vocabulary is CORPUS DATA, not a constant. The first real ledger documented two
+// words in its own header and used six; assuming the header cost 7 items, which migrated `open`
+// into the untriaged set. Widening `migrate.py` alone is half a fix — every consumer that decides
+// "is this open?" shares this list, or the newly-closed items still read as open here.
+const CLOSED = /^(DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED)\b/u;
+
 const [dir, ...flags] = process.argv.slice(2);
 const all = flags.includes("--all");
 
@@ -26,7 +32,7 @@ const items = readdirSync(dir)
   .filter((n) => n.endsWith(".md"))
   .map((n) => ({ file: n, ...(frontmatter(path.join(dir, n)) ?? {}) }))
   .filter((i) => i.id)
-  .filter((i) => all || !/^(DONE|KILLED)/u.test(i.status ?? ""));
+  .filter((i) => all || !CLOSED.test(i.status ?? ""));
 
 if (flags.includes("--json")) {
   console.log(JSON.stringify(items, null, 2));

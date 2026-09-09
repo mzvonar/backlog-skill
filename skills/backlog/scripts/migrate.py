@@ -17,10 +17,33 @@ def slug(s):
     s = re.sub(r'[^a-zA-Z0-9]+', '-', s).strip('-').lower()
     return (s[:52].rstrip('-')) or "item"
 
+# THE CLOSED VOCABULARY IS CORPUS DATA, NOT A CONSTANT. Assuming it is `DONE|KILLED` because that
+# is what a ledger's own header documents costs items: the first real corpus documented two words
+# and used SIX, and the four undocumented ones retired 7 items that then migrated `open` — into the
+# untriaged set, i.e. presented to every grooming pass as live work needing a trigger, two of them
+# saying "do not action" verbatim. Derive it from the ledger before migrating (adopting.md says how)
+# and add what you find; `verify-migration.mjs` reports marker-shaped words it does not know.
+CLOSED_WORDS = "DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED"
+
+# A hedge in front of a closure is not a closure. These are reported, never applied — "mostly
+# closed" is a person's call, and the tool guessing either way is worse than the tool asking.
+HEDGE = re.compile(r'(HALF|NOT|MOSTLY|PARTLY|PARTIALLY|NEARLY)\s*$', re.I)
+
 # A section heading can carry a status of its own, and the prose under it can say things no item
 # repeats — provenance, cross-references, "do not action". Both are content: neither is an item, so
 # neither reaches a detail file, and dropping them is silent.
-SECTION_MARK = re.compile(r'\*\*\s*(?:[^\w\s]\s*)?(DONE|KILLED|RETIRED)\b')
+SECTION_MARK = re.compile(r'\*\*\s*(?:[^\w\s]\s*)?(' + CLOSED_WORDS + r')\b')
+
+
+def yaml_single(s):
+    r"""A YAML single-quoted scalar. The ONLY escape is a doubled quote; backslashes are literal.
+
+    Not `repr()`, which was here and is Python's escaping, not YAML's: it doubled the backslash in
+    a regex an item quoted (`\.md$` became `\\.md$`, so the stored record no longer matched its
+    source) and wrote an apostrophe as \' , which YAML does not accept inside single quotes. Both
+    shipped. The two readers here survived it only because they scan lines instead of parsing YAML.
+    """
+    return "'" + " ".join(str(s).split()).replace("'", "''") + "'"
 
 items, no_trigger, closed_n, ambiguous, sections, section_open = [], 0, 0, [], [], []
 for a, b in zip(secs, secs[1:] + [len(lines)]):
@@ -61,12 +84,25 @@ for a, b in zip(secs, secs[1:] + [len(lines)]):
         head_zone = " ".join(" ".join(own).split())
         # The closing paren stays OPTIONAL: it can fall outside the zone when the parenthetical runs
         # past the item's own text. Take the date and stop.
-        m = re.search(r'\*\*[^*]{0,4}(?<!HALF )(DONE|KILLED)[^(*]{0,12}\((?P<d>[^)\n]*)\)?', head_zone)
-        if m and re.search(r'Y{4}|MM-DD', m.group('d')):
+        zone = re.sub(r'`[^`]*`', ' ', head_zone)   # prose that QUOTES the convention is not a status
+        m = re.search(r'\*\*[^*]{0,4}(' + CLOSED_WORDS + r')[^(*]{0,12}\((?P<d>[^)\n]*)\)?', zone)
+        if m and (re.search(r'Y{4}|MM-DD', m.group('d')) or HEDGE.search(zone[:m.start(1)])):
             m = None
+        # A closure need not carry a date: `**RESOLVED — the A2 five-seam block (:692-713).**` and
+        # `**SUPERSEDED the same day …**` are both retirements whose parenthetical is not a date, or
+        # is absent. Recognise the marker, say the date is unknown, and REPORT it rather than
+        # leaving the item open — the failure this replaces was silence, not a wrong date.
+        undated = None
+        if not m:
+            u = re.search(r'\*\*\s*(?:[^\w\s]\s*)?(' + CLOSED_WORDS + r')\b', zone)
+            if u and not HEDGE.search(zone[:u.start(1)]):
+                undated = u
         struck = block.lstrip().startswith("- ~~")
         if m:
             status = f"{m.group(1)} ({m.group('d').split(',')[0].strip()})"
+        elif undated:
+            status = f"{undated.group(1)} (date unknown)"
+            ambiguous.append((block[:70], f"{undated.group(1)} with no date parenthetical"))
         elif struck:
             status = "KILLED (date unknown)"
             ambiguous.append((block[:70], "struck through, no date"))
@@ -119,8 +155,8 @@ for si, sec in enumerate(sections):
         n += 1
         iid = f"dw-{n:03d}"
         fn = f"{iid}-{slug(it['summary'])}.md"
-        fm = ["---", f"id: {iid}", f"source_section: {it['head']!r}",
-              f"summary: {it['summary']!r}", f"trigger: {it['trigger']!r}",
+        fm = ["---", f"id: {iid}", f"source_section: {yaml_single(it['head'])}",
+              f"summary: {yaml_single(it['summary'])}", f"trigger: {yaml_single(it['trigger'])}",
               f"status: {it['status']}", "---", ""]
         (out / "deferred-work" / fn).write_text("\n".join(fm) + it["block"] + "\n")
         index += [f"- id: {iid}", f"  summary: {it['summary']}", f"  detail: `deferred-work/{fn}`"]

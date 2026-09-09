@@ -37,10 +37,10 @@ Context that no item repeats — why these were parked and who owns them.
 `;
 
 // Runs migrate then verify, and returns verify's exit code and output rather than throwing.
-const run = (mutate = () => {}) => {
+const run = (mutate = () => {}, corpus = CORPUS) => {
   const dir = mkdtempSync(path.join(tmpdir(), "dbk-vm-"));
   const src = path.join(dir, "deferred-work.md");
-  writeFileSync(src, CORPUS);
+  writeFileSync(src, corpus);
   const out = path.join(dir, "out");
   execFileSync("python3", [MIGRATE, src, out], { encoding: "utf-8" });
   mutate({ dir, out, src, detailDir: path.join(out, "deferred-work"), index: path.join(out, "deferred-work.md") });
@@ -153,6 +153,30 @@ describe("verify-migration.mjs", () => {
       // comparison says it did not run rather than reporting a screenful of false disagreements.
       assert.match(stdout, /STATUS_UNCHECKED/u);
       assert.doesNotMatch(stdout, /STATUS_DISAGREE/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("names marker-shaped words the vocabulary does not know — the vocabulary gap's only signal", () => {
+    // The check that would have caught the seven. A vocabulary both implementations share is the
+    // one thing a differential check is structurally blind to, so it cannot be a comparison — it
+    // has to be "here are the words your ledger uses that neither of us claims", for a person.
+    const WORDS = `# Deferred work
+
+## Section
+
+- **RETIRED (2026-09-03) — resolved elsewhere.** A closure this build understands.
+- **ESCALATED (2026-09-03) — handed to the platform team.** One it does not.
+- **An ordinary open item.** No marker at all.
+`;
+    const { dir, status, stdout } = run(undefined, WORDS);
+    try {
+      assert.equal(status, 0, `the notice must not fail the gate:\n${stdout}`);
+      assert.match(stdout, /marker-shaped word\(s\) on items that migrated OPEN/u);
+      assert.match(stdout, /ESCALATED/u);
+      // RETIRED is in the vocabulary and closed its item, so it is not a gap.
+      assert.doesNotMatch(stdout, /1x {2}RETIRED/u);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

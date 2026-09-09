@@ -15,10 +15,20 @@ is the only copy of the thing you are checking against.
 LEDGER=path/to/deferred-work.md
 OUT=$(mktemp -d)
 
+# 0. DERIVE YOUR LEDGER'S CLOSED VOCABULARY. Do not trust the ledger's own header — the first
+#    corpus documented two words and used six, and the four it never mentioned cost seven items.
+grep -oE '\*\*[^*]{0,4}[A-Z]{4,}' "$LEDGER" | grep -oE '[A-Z]{4,}' | sort | uniq -c | sort -rn
+
 python3 scripts/migrate.py "$LEDGER" "$OUT"              # 1. migrate to scratch
 node scripts/verify-migration.mjs "$LEDGER" "$OUT"       # 2. nothing lost, extractions agree
 node scripts/validate.mjs "$OUT"                         # 3. structure, pointers, policy
 ```
+
+Step 0 takes a second and is the one this page most wishes it had had. Read the list: anything that
+retires an item and is not in `CLOSED_WORDS` (`migrate.py`) belongs there, and in the `CLOSED`
+regex that `backlog.mjs`, `validate.mjs` and `verify-migration.mjs` each carry. Step 2 also prints
+marker-shaped words it does not recognise, so it catches what step 0 missed — but only as a notice
+a person reads, because no comparison can find a word both sides are missing.
 
 Step 2 is the gate. It exits non-zero if any source content is unaccounted for or if a second
 extractor disagrees about which items are closed, and **both of those happened on the first real
@@ -35,13 +45,13 @@ It prints counts rather than deciding. Each line is a task.
 
 ### `open with NO trigger: N`
 
-Expected, and large on first adoption — **108 of 207** on the real corpus. The monolith hid them;
+Expected, and large on first adoption — **101 of 200** on the real corpus. The monolith hid them;
 the `deferred-work` policy surfaces them because an item with no trigger cannot be classified into
 any bucket. It is not "keep-deferred", it is **untriaged**.
 
 **Do not invent triggers to clear the number.** A guessed trigger is worse than a missing one: it
 reads as a decision someone made. Give them triggers incrementally, a few per grooming pass, when
-the surrounding work makes the real trigger obvious. Adoption is not the moment to triage 108 items.
+the surrounding work makes the real trigger obvious. Adoption is not the moment to triage 101 items.
 
 ### `sections with NO bullet items: N`
 
@@ -62,13 +72,15 @@ section can hold one live item and only a person can tell which.
 
 Read the section's banner and decide per item. On the real corpus there was one, under a heading
 reading *"all five seams are closed … do not action"* — it had migrated as live work, which is
-exactly what that banner existed to prevent. Set its `status` to the ledger's own closed
-vocabulary, not the heading's word: `backlog.mjs` filters on `DONE` / `KILLED`, so a
-`status: RETIRED (…)` still reads as open.
+exactly what that banner existed to prevent. Write the `status` in the vocabulary the readers share
+(`CLOSED` in `backlog.mjs` / `validate.mjs` / `verify-migration.mjs`) — a word outside it reads as
+open however final it sounds, which is trap 8 in miniature.
 
 ### `status inferred/ambiguous: N`
 
-Struck-through items with no date. They get `KILLED (date unknown)`. Fix the ones you can date.
+Two shapes, both recorded as `<WORD> (date unknown)` and both worth a minute: a struck-through item,
+and a closure whose parenthetical is not a date or is absent (`**SUPERSEDED the same day — FIXED
+upstream at 2c8bf973.**`). Fix the ones you can date. Six on the real corpus.
 
 ---
 
@@ -91,7 +103,7 @@ an owner, or a link would have been.
 
 **Some index summaries read as a status marker.** `summary` is derived from the item's first bold
 span, so an item whose marker is written at the head of the bullet — `- **DONE (2026-08-04)** —
-decided at the retro…` — yields `summary: DONE (2026-08-04)`, which names nothing. **36 of 251** on
+decided at the retro…` — yields `summary: DONE (2026-08-04)`, which names nothing. **43 of 251** on
 the real corpus, all of them closed items, so they are rows you meet only when reading the index
 directly or passing `--all`. Fixing it means skipping a leading marker and falling back to the
 first sentence, and for some items no title survives outside a `~~strikethrough~~` further down.

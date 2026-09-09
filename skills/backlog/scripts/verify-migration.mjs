@@ -134,8 +134,13 @@ for (const [sec, ls] of uncovered) {
 // ---------------------------------------------------------------- D. the second extractor
 // Deliberately NOT migrate.py's method: code spans are stripped structurally, so prose that quotes
 // the convention cannot match, rather than being excluded by spotting a `YYYY-MM-DD` placeholder.
-const CLOSED = /\*\*\s*(?:[^\w\s]\s*)?(?:DONE|KILLED)\b/u;
-const HALF = /HALF\s+DONE/iu;
+// Same six words migrate.py knows. Sharing the VOCABULARY is fine — it is corpus data, and the two
+// still derive the zone differently, which is the axis this check exists to compare. What sharing
+// cannot catch is the vocabulary itself being wrong, and that is exactly how seven closed items
+// shipped `open` past a green gate: both sides knew only DONE|KILLED. Hence UNKNOWN_MARKER below —
+// it reports marker-shaped words neither side claims, which is the only signal a vocabulary gap has.
+const CLOSED = /\*\*\s*(?:[^\w\s]\s*)?(?:DONE|KILLED|CLOSED|SUPERSEDED|RETIRED|RESOLVED)\b/u;
+const HEDGE = /(HALF|NOT|MOSTLY|PARTLY|PARTIALLY|NEARLY)\s*$/iu;
 const STRUCK = /^-\s+~~/u;
 
 const ownText = (block) => {
@@ -157,7 +162,7 @@ items.forEach((it, i) => {
   if (STRUCK.test(flat)) { mine.add(i + 1); return; }
   const bare = flat.replace(/`[^`]*`/gu, " ");
   const m = CLOSED.exec(bare);
-  if (m && !HALF.test(bare.slice(Math.max(0, m.index - 10), m.index + m[0].length))) mine.add(i + 1);
+  if (m && !HEDGE.test(bare.slice(0, m.index + 2).replace(/\*\*/gu, " "))) mine.add(i + 1);
 });
 
 // Diffed as SETS. Comparing sizes is what let a 4-item disagreement read as agreement.
@@ -173,6 +178,33 @@ if (items.length === details.length) {
 } else {
   add("STATUS_UNCHECKED", path.basename(source),
     "item counts differ, so items cannot be lined up with detail files — fix that first");
+}
+
+// ---------------------------------------------------------------- E. vocabulary gaps
+// A word sitting where a status marker sits, on an item that migrated OPEN, that neither side
+// recognises. Reported as a NOTICE with one example each, because most are ordinary emphasis
+// (`**STILL OPEN…`, `**DECIDED at…`) and a few are the ledger's own closed vocabulary that this
+// tool has never heard of. Telling those apart is a person's job; SEEING them is not, and nothing
+// else in either tool can. This is the check that would have caught the seven.
+const MARKERISH = /\*\*\s*(?:[^\w\s]\s*)*([A-Z][A-Z]{3,})\b/gu;
+const unknown = new Map();
+if (items.length === details.length) {
+  items.forEach((it, i) => {
+    if (theirs.has(i + 1)) return;                       // it migrated closed; nothing was missed
+    const bare = ownText(it.block).replace(/`[^`]*`/gu, " ");
+    for (const m of bare.matchAll(MARKERISH)) {
+      if (CLOSED.test(`**${m[1]}`)) continue;
+      if (!unknown.has(m[1])) unknown.set(m[1], { n: 0, eg: bare.slice(0, 74), line: it.line });
+      unknown.get(m[1]).n += 1;
+    }
+  });
+}
+if (unknown.size) {
+  notices.push(`${unknown.size} marker-shaped word(s) on items that migrated OPEN are not in the closed vocabulary.`);
+  notices.push("    If any of these retires an item in your ledger, add it to CLOSED_WORDS in migrate.py and re-run:");
+  for (const [w, v] of [...unknown].sort((a, b) => b[1].n - a[1].n)) {
+    notices.push(`    ${String(v.n).padStart(3)}x  ${w.padEnd(12)} e.g. :${v.line}  ${v.eg}`);
+  }
 }
 
 // ---------------------------------------------------------------- report

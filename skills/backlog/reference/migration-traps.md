@@ -1,6 +1,6 @@
 # Migration traps
 
-Seven defects that were live in this migrator, found against a real 3,622-line corpus. Each is a
+Nine defects that were live in this migrator, found against a real 3,622-line corpus. Each is a
 silent corruption: the migration completes, the counts look plausible, and content is misfiled or
 simply absent.
 
@@ -147,6 +147,62 @@ reported for promotion by hand.
 
 ---
 
+## 8. The closed vocabulary is not the one the ledger documents
+
+The first corpus's own header said: *"Strike a bullet through or mark it `**DONE (YYYY-MM-DD)**` /
+`**KILLED (YYYY-MM-DD)**` to retire it."* Two words. Measured across the same file:
+
+| word | uses |
+|---|---|
+| `DONE` | 40 |
+| `KILLED` | 11 |
+| **`CLOSED`** | **9** |
+| **`SUPERSEDED`** | **4** |
+| **`RETIRED`** | **4** |
+| **`RESOLVED`** | **1** |
+
+The four the header never mentions retired **seven items that migrated `open`** — and because they
+were open with no `trigger`, they landed in the *untriaged* set, i.e. presented to every grooming
+pass as live work needing a trigger. Two of them read *"Kept for provenance; do not action."*
+
+Three things make this the worst trap on the page:
+
+- **The differential gate cannot see it.** `verify-migration.mjs` shared the same `DONE|KILLED`
+  vocabulary, so both sides agreed and the gate went green. This is precisely the "shape BOTH
+  implementations get wrong" its own header warns it is blind to — written before anyone had found
+  one, and then found.
+- **The author half-knew.** `SECTION_MARK` already accepted `RETIRED`, because a *section* heading
+  used it. Nobody asked whether an *item* could. Widening one scope and not its sibling is the same
+  enumerate-instead-of-close failure as traps 3→4.
+- **Widening the migrator is half a fix.** Every consumer that decides "is this open?" carries the
+  list too — `backlog.mjs` and `validate.mjs` both filtered on `/^(DONE|KILLED)/`, so the newly
+  closed items would still have read as open in the reader.
+
+**Derive it from your ledger before migrating** (`adopting.md` has the command), and note what
+`verify-migration.mjs` now prints: marker-shaped words on items that migrated OPEN which neither
+side claims. That report is the only signal a vocabulary gap has, because a comparison between two
+implementations that share the gap produces none.
+
+A hedge in front of a closure is not a closure: `MOSTLY CLOSED`, `PARTIALLY LANDED`, `HALF DONE`,
+`NOT done` stay open and are reported. And a closure need not carry a date — `**SUPERSEDED the same
+day — FIXED upstream at 2c8bf973.**` retires an item with no parenthetical at all. Record it as
+`(date unknown)` and report it; leaving it open is how two of the seven were lost.
+
+## 9. `repr()` is not a YAML quoter
+
+Frontmatter was emitted with Python's `repr()`. It looks right and is not:
+
+- **backslashes double.** An item quoting the regex `` `^conformance/.*\.md$` `` was stored as
+  `\\.md$` — the record no longer matches the source it claims to preserve.
+- **an apostrophe becomes `\'`**, which is invalid inside a YAML single-quoted scalar. YAML doubles
+  it (`''`). Two files shipped unparseable.
+
+Nothing failed, because both readers here scan lines with a regex instead of parsing YAML — so the
+format was sold as frontmatter while two files were not frontmatter. **If you emit a format, emit it
+with that format's rules, and validate with that format's parser rather than the reader you shipped.**
+
+---
+
 ## The general rule
 
 Traps 1–5 are the same mistake at different scales: **anchoring on the layout the author imagined
@@ -163,6 +219,9 @@ Two corollaries, both bought the expensive way:
 - **Verify in the source's units, not the tool's.** Traps 6 and 7 are a different failure: not
   misread items but content the model has no slot for. Only a byte-level "is all of this somewhere
   in the output?" sweep finds those, and it must run before the migration is committed.
+- **A vocabulary is data, and it is the one thing a differential check cannot test.** Trap 8 passed
+  a green gate because both implementations shared the missing words. Where two checks must agree,
+  ask what they agree *about*, and report the inputs neither of them claims.
 
 So: parse loosely, normalise before matching, restrict scope structurally, and **report what was
 inferred instead of deciding silently**. `migrate.py` prints an ambiguous count for exactly this
