@@ -1,7 +1,8 @@
 # Migration traps
 
-Five defects that were live in this migrator, found against a real 3,622-line corpus. Each is a
-silent corruption: the migration completes, the counts look plausible, and items are misfiled.
+Seven defects that were live in this migrator, found against a real 3,622-line corpus. Each is a
+silent corruption: the migration completes, the counts look plausible, and content is misfiled or
+simply absent.
 
 They are recorded because they are properties of *hand-written markdown ledgers in general*, not of
 one repo's file. Anyone adopting this format will meet them.
@@ -108,9 +109,43 @@ a bullet is indented; anything at the left margin has left the item.
 
 ---
 
+## 6. A section carries content that is not an item
+
+An item-driven walk writes items. A hand-written ledger also holds, under its `## ` headings:
+
+- **intro prose** — why this group was parked, who owns it, what supersedes it. On the real corpus,
+  **23 of 85** sections had some, and all 23 were dropped.
+- **a status on the heading itself** — `## Deferred from: story 1-8 … — **RETIRED (2026-08-07)**`,
+  with a blockquote reading *"all five seams are closed … do not action"*. Its one item carried no
+  marker of its own, so it migrated `open`: presented as live work, which is precisely what that
+  banner was written to stop. The banner even says so — *"the block was never marked on itself, so
+  grooming kept re-reading it as open."*
+
+Keep the headings and the prose in the index; readers match on `id:` / `detail:` lines, so neither
+costs them anything. And **report** a section-level status onto its open items rather than applying
+it: a retired section usually means its items are done, but a DONE section can hold one live item
+and only a person can tell which.
+
+## 7. A section with no bullets at all
+
+The newest entry on the real corpus was a `### ` heading with **Trigger** / **What** / **Why** /
+**Owner** paragraphs and not one bullet anywhere. It is an item by every meaning except the
+migrator's, so an item-driven walk dropped the whole section — a live item with a stated trigger,
+absent from a migration billed as lossless, with the item count unchanged and nothing to notice.
+
+Walk **sections**, not items. Then a section with no items still reaches the index and gets
+reported for promotion by hand.
+
+> Both of these were found by asking a question the item counts cannot answer: *does every byte of
+> the source appear somewhere in the output?* The item-level answer was a clean 251/251 while 23
+> section intros and one whole item were on the floor. **A losslessness check whose unit is the
+> thing the tool already understands cannot see what the tool does not model.**
+
+---
+
 ## The general rule
 
-All five are the same mistake at different scales: **anchoring on the layout the author imagined
+Traps 1–5 are the same mistake at different scales: **anchoring on the layout the author imagined
 rather than the layout the corpus contains.** A hand-maintained ledger accretes formatting over
 years and nothing ever validated it, because until now nothing read it mechanically.
 
@@ -121,6 +156,9 @@ Two corollaries, both bought the expensive way:
   someone thought of — normalising the input is what covers the ones nobody did.
 - **Widening a scope opens a boundary.** Trap 4's fix made trap 5 reachable. Whenever a zone grows,
   ask what it now touches that it did not before, and add the fixture before believing the count.
+- **Verify in the source's units, not the tool's.** Traps 6 and 7 are a different failure: not
+  misread items but content the model has no slot for. Only a byte-level "is all of this somewhere
+  in the output?" sweep finds those, and it must run before the migration is committed.
 
 So: parse loosely, normalise before matching, restrict scope structurally, and **report what was
 inferred instead of deciding silently**. `migrate.py` prints an ambiguous count for exactly this

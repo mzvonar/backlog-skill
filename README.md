@@ -49,8 +49,8 @@ python3 scripts/migrate.py <dir>/deferred-work.md <out>   # adopt an existing mo
 frontmatter is derived from it, never invented. Fields the source does not state are emitted empty
 and counted, so the gaps are visible.
 
-**Read `reference/migration-traps.md` before adopting.** Five silent corruptions were live in this
-migrator against a real ledger; all five ship as fixtures, and each was found only by cross-checking
+**Read `reference/migration-traps.md` before adopting.** Seven silent corruptions were live in this
+migrator against a real ledger; all seven ship as fixtures, and each was found only by cross-checking
 against an independent extraction and refusing a near-match. Diff the two as SETS: the first
 adoption compared counts, called 40 close enough, and shipped a number that was wrong by four.
 

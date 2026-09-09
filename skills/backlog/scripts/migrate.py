@@ -17,11 +17,19 @@ def slug(s):
     s = re.sub(r'[^a-zA-Z0-9]+', '-', s).strip('-').lower()
     return (s[:52].rstrip('-')) or "item"
 
-items, no_trigger, closed_n, ambiguous = [], 0, 0, []
+# A section heading can carry a status of its own, and the prose under it can say things no item
+# repeats — provenance, cross-references, "do not action". Both are content: neither is an item, so
+# neither reaches a detail file, and dropping them is silent.
+SECTION_MARK = re.compile(r'\*\*\s*(?:[^\w\s]\s*)?(DONE|KILLED|RETIRED)\b')
+
+items, no_trigger, closed_n, ambiguous, sections, section_open = [], 0, 0, [], [], []
 for a, b in zip(secs, secs[1:] + [len(lines)]):
     head = lines[a][3:].strip()
     body = lines[a+1:b]
     idx = [i for i, l in enumerate(body) if re.match(r'^- ', l)]
+    intro = "\n".join(body[:idx[0]] if idx else body).strip()
+    sections.append(dict(head=head, intro=intro, has_items=bool(idx)))
+    sm = SECTION_MARK.search(head)
     for j, s in enumerate(idx):
         e = idx[j+1] if j+1 < len(idx) else len(body)
         block = "\n".join(body[s:e]).rstrip()
@@ -72,7 +80,14 @@ for a, b in zip(secs, secs[1:] + [len(lines)]):
             no_trigger += 1
         hm = re.match(r'^- \*\*(.+?)\*\*', block, re.S) or re.match(r'^- (.+?)[.\n]', block, re.S)
         summary = " ".join((hm.group(1) if hm else block[2:60]).split())[:180]
-        items.append(dict(head=head, block=block, status=status, trigger=trigger, summary=summary))
+        if sm and status == "open":
+            # Reported, never applied: a retired SECTION usually means its items are done, but a
+            # DONE section can still hold one live item and only a person can tell. The one this
+            # found had a heading reading "do not action" — grooming would have re-read it as open,
+            # which is the very thing that heading was written to stop.
+            section_open.append((f"{head[:58]}…", block.split("\n")[0][:80]))
+        items.append(dict(head=head, sec=len(sections)-1, block=block, status=status,
+                          trigger=trigger, summary=summary))
 
 index = ["---",
          "# The migrated ledger is deferred work: an open item must say when it becomes",
@@ -87,15 +102,38 @@ index = ["---",
          "frontmatter is the source of truth for `trigger` and `status`. Entries appended here by a",
          "tool with no `detail:` are untriaged — grooming promotes them.",
          ""]
-for n, it in enumerate(items, 1):
-    iid = f"dw-{n:03d}"
-    fn = f"{iid}-{slug(it['summary'])}.md"
-    fm = ["---", f"id: {iid}", f"source_section: {it['head']!r}",
-          f"summary: {it['summary']!r}", f"trigger: {it['trigger']!r}",
-          f"status: {it['status']}", "---", ""]
-    (out / "deferred-work" / fn).write_text("\n".join(fm) + it["block"] + "\n")
-    index += [f"- id: {iid}", f"  summary: {it['summary']}", f"  detail: `deferred-work/{fn}`"]
+# Grouped under the original headings, with each section's intro prose kept verbatim. The index
+# is the whole file's reduction, not just its bullets — a heading that says "do not action" has to
+# survive somewhere a reader looks. Readers of this file match on `id:`/`detail:` lines, so prose
+# and headings between entries cost them nothing.
+# Walked by SECTION, not by item, so a section carrying no bullets at all still reaches the index.
+# One exists in the wild: the newest entry on the real corpus is a `### ` heading with Trigger /
+# What / Why / Owner paragraphs and no bullet anywhere, which an item-driven walk drops whole —
+# a live item with a stated trigger, silently absent from a migration billed as lossless.
+n = 0
+for si, sec in enumerate(sections):
+    index += ["", f"## {sec['head']}", ""]
+    if sec["intro"]:
+        index += [sec["intro"], ""]
+    for it in [i for i in items if i["sec"] == si]:
+        n += 1
+        iid = f"dw-{n:03d}"
+        fn = f"{iid}-{slug(it['summary'])}.md"
+        fm = ["---", f"id: {iid}", f"source_section: {it['head']!r}",
+              f"summary: {it['summary']!r}", f"trigger: {it['trigger']!r}",
+              f"status: {it['status']}", "---", ""]
+        (out / "deferred-work" / fn).write_text("\n".join(fm) + it["block"] + "\n")
+        index += [f"- id: {iid}", f"  summary: {it['summary']}", f"  detail: `deferred-work/{fn}`"]
 (out / "deferred-work.md").write_text("\n".join(index) + "\n")
 print(f"  items written      : {len(items)}  ({closed_n} closed, {len(items)-closed_n} open)")
+bulletless = [s["head"] for s in sections if not s["has_items"]]
+if bulletless:
+    print(f"  sections with NO bullet items: {len(bulletless)}  <- content kept in the index, promote by hand")
+    for h in bulletless:
+        print(f"      {h[:78]}")
 print(f"  status inferred/ambiguous: {len(ambiguous)}")
+if section_open:
+    print(f"  open items under a RETIRED/DONE section heading: {len(section_open)}  <- resolve by hand")
+    for h, first in section_open:
+        print(f"      {h}\n        {first}")
 print(f"  open with NO trigger: {no_trigger}  <- migration must surface these, not invent them")

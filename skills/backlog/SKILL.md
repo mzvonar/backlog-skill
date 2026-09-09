@@ -135,4 +135,4 @@ not state is emitted empty and counted, so gaps are visible rather than guessed.
 
 **Check the migration against an independent count before committing it.** Adoption is the one
 moment the old format's inconsistencies must be parsed, and they are worse than they look — see
-`reference/migration-traps.md` for the five that corrupted this migrator before they were found.
+`reference/migration-traps.md` for the seven that corrupted this migrator before they were found.

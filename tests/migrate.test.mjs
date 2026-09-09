@@ -131,3 +131,72 @@ describe("migrate.py", () => {
     }
   });
 });
+
+// A ledger is more than its bullets. These three shapes carry content that reaches no detail file,
+// so a migration driven by items alone drops them with no failure signature: the counts are right,
+// the items are all present, and a section's worth of provenance is simply gone.
+const SECTIONS = `# Deferred work
+
+## A section whose heading is retired — **RETIRED (2026-09-03, some groom)**
+
+> **RETIRED — the work is closed.** Kept for provenance; do not action.
+
+- **An item under that heading.** It carries no marker of its own.
+
+## A section with intro prose
+
+Context nothing else repeats: why these were parked and who owns them.
+
+- **An ordinary open item.** With a body.
+
+## A section with no bullets at all (2026-09-08)
+
+### Delete the shim when both consumer tiers land
+
+**Trigger:** both downstream tiers are merged.
+
+**What:** delete the shim and drop its paragraph from the README.
+`;
+
+describe("migrate.py — what is not an item", () => {
+  it("keeps a section's intro prose, which reaches no detail file", () => {
+    const { dir, stdout } = migrate(SECTIONS);
+    try {
+      const index = readFileSync(path.join(dir, "out", "deferred-work.md"), "utf-8");
+      assert.ok(
+        index.includes("Context nothing else repeats: why these were parked and who owns them."),
+        `intro prose dropped from the index:\n${index}`,
+      );
+      assert.ok(index.includes("> **RETIRED — the work is closed.**"), "the retired banner is gone");
+      assert.ok(stdout.length > 0);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps a section that has no bullet items at all, and says so", () => {
+    // The newest entry on the real corpus has this shape — a heading with Trigger/What paragraphs
+    // and no bullet anywhere. An item-driven walk drops the whole section and reports 0 items lost.
+    const { dir, stdout } = migrate(SECTIONS);
+    try {
+      const index = readFileSync(path.join(dir, "out", "deferred-work.md"), "utf-8");
+      assert.ok(index.includes("Delete the shim when both consumer tiers land"), "bulletless section dropped");
+      assert.ok(index.includes("**Trigger:** both downstream tiers are merged."), "its trigger is gone");
+      assert.match(stdout, /sections with NO bullet items: 1/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("reports an open item under a retired heading — and does NOT retire it", () => {
+    // Report, never apply. A retired section usually means its items are done, but a DONE section
+    // can hold one live item and only a person can tell which. Silently inheriting would decide it.
+    const { dir, status, stdout } = migrate(SECTIONS);
+    try {
+      assert.match(stdout, /open items under a RETIRED\/DONE section heading: 1/u);
+      assert.equal(status.filter((s) => s === "open").length, 2, `got ${JSON.stringify(status)}`);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});
