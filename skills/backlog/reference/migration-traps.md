@@ -229,6 +229,15 @@ colon**, and take the summary and the status from the heading. The guard matters
 ordinary grouping heading in plenty of ledgers, and folding those would merge unrelated items and
 lose every summary but the heading's. Report the count of folded records so the choice is visible.
 
+**Both halves of the toolchain segment, so both must fold.** `migrate.py` learned this and
+`verify-migration.mjs` did not, so the two counted 247 items against 251 and every position after
+the first fold was off by one — **67 spurious status disagreements on a correct migration**. A
+differential check whose halves disagree about what an *item is* compares nothing, and it fails
+loudly, which is worse than useless: it buries the real findings under its own noise. The same
+shape had already appeared twice that day — a widened vocabulary that only one of four consumers
+knew, and a YAML escape the writer emitted and no reader decoded. **When a definition changes, the
+question is not "did I fix it" but "who else holds a copy of this definition".**
+
 Note where this sits relative to trap 7: that was a heading with **no** bullets, this is a heading
 whose bullets are not items. They are the same mistake — *the item is not always the bullet* — and
 fixing the first did not reveal the second, because a heading with two bullets under it looks

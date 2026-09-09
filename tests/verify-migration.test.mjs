@@ -158,6 +158,59 @@ describe("verify-migration.mjs", () => {
     }
   });
 
+  it("segments a `### ` record exactly as migrate.py does", () => {
+    // The two sides must agree on what an ITEM is. When migrate.py learned to fold a `### ` record
+    // and this did not, they counted 247 against 251 and every position after the first fold was
+    // off by one — 67 spurious status disagreements on a correct migration. A differential check
+    // whose halves disagree about the unit compares nothing, and it fails LOUDLY, which is worse
+    // than useless: it buries the real findings.
+    const RECORD = `# Deferred work
+
+## A section
+
+- **An ordinary item before the record.** Still an item.
+
+### A record — **KILLED (2026-08-04)**
+
+- **What:** the parked thing.
+- **Trigger:** the story that unparks it.
+`;
+    const { dir, status, stdout } = run(undefined, RECORD);
+    try {
+      assert.equal(status, 0, `expected agreement, got:\n${stdout}`);
+      assert.match(stdout, /2 items, 1 sections/u);
+      assert.doesNotMatch(stdout, /STATUS_DISAGREE/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("does not fold when an ordinary bullet trails the record's fields", () => {
+    // The guard's cost, pinned rather than discovered later: an ordinary item sharing the `### `
+    // run means the heading is not unambiguously a record, so nothing folds and the fields stay
+    // separate items. That is the SAFE direction — over-merging destroys summaries — but it is a
+    // real limitation, and the ledger that hits it will read as three items where it means two.
+    // Both sides behave identically here, which is what keeps the gate meaningful either way.
+    const MIXED = `# Deferred work
+
+## A section
+
+### A record — **KILLED (2026-08-04)**
+
+- **What:** the parked thing.
+- **Trigger:** the story that unparks it.
+
+- **An ordinary item sharing the run.** Suppresses the fold.
+`;
+    const { dir, status, stdout } = run(undefined, MIXED);
+    try {
+      assert.equal(status, 0, `the two sides must still agree:\n${stdout}`);
+      assert.match(stdout, /3 items, 1 sections/u);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("does not fail on items added by hand after adoption — only skips the comparison", () => {
     // The ordinary post-adoption state: the index is hand-maintained, so detail files outnumber the
     // source ledger's items and position-matching stops working. A gate that goes permanently red

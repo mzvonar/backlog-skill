@@ -71,6 +71,11 @@ const details = detailFiles.map((name) => {
 // ---------------------------------------------------------------- segmentation
 // Section = a `## ` heading and everything to the next one. Item = a top-level `- ` bullet and
 // everything to the next one, which is why an item's block can hold a trailing sub-heading.
+// Segmentation MUST match migrate.py's, fold and all. It did not, once: migrate.py learned to fold
+// a `### ` record and this did not, so the two counted 247 and 251 and every position after the
+// first fold was off by one — 67 spurious status disagreements on a correct migration. A
+// differential check whose two sides disagree about what an ITEM is compares nothing.
+const FIELD_BULLET = /^- \*\*[A-Z][A-Za-z /]{0,24}:\*\*/u;
 const lines = srcText.split("\n");
 const secStarts = lines.map((l, i) => (l.startsWith("## ") ? i : -1)).filter((i) => i >= 0);
 const items = [];
@@ -80,10 +85,29 @@ for (const [k, a] of secStarts.entries()) {
   const body = lines.slice(a + 1, b);
   const bullets = body.map((l, i) => (/^- /u.test(l) ? i : -1)).filter((i) => i >= 0);
   sections.push({ head: lines[a], line: a + 1, hasItems: bullets.length > 0 });
+
+  const subs = body.map((l, i) => (l.startsWith("### ") ? i : -1)).filter((i) => i >= 0);
+  const folded = new Map();
+  for (const si of subs) {
+    const end = subs.find((x) => x > si) ?? body.length;
+    const run = bullets.filter((x) => x > si && x < end);
+    if (run.length > 0 && run.every((x) => FIELD_BULLET.test(body[x]))) {
+      folded.set(run[0], { si, end });
+      for (const x of run.slice(1)) folded.set(x, null);
+    }
+  }
+
   for (const [j, s] of bullets.entries()) {
-    const e = bullets[j + 1] ?? body.length;
-    const block = body.slice(s, e).join("\n").replace(/\s+$/u, "");
-    if (block.trim()) items.push({ block, line: a + 2 + s, sec: sections.length - 1 });
+    let start = s;
+    let e = bullets[j + 1] ?? body.length;
+    if (folded.has(s)) {
+      const rec = folded.get(s);
+      if (rec === null) continue;                      // a field absorbed into the record above
+      start = rec.si;
+      e = rec.end;
+    }
+    const block = body.slice(start, e).join("\n").replace(/\s+$/u, "");
+    if (block.trim()) items.push({ block, line: a + 2 + start, sec: sections.length - 1 });
   }
 }
 
